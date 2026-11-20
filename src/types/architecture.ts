@@ -100,12 +100,12 @@ export interface RegionRates {
   /** USD per instance-hour. */
   ec2: Record<string, number>;
   rds: { engines: Record<'postgresql' | 'mysql', RdsEngineRates> };
-  /** gp3 storage USD per GB-month and per IOPS-month above the free 3,000 IOPS. */
-  ebs: { gp3Gb: number; gp3Iops: number };
-  /** `requests` is USD per 1M requests; `gbSeconds` is USD per GB-second. */
-  lambda: { requests: number; gbSeconds: number };
-  /** Storage is USD per GB-month; `putRequests` is USD per 1,000 requests. */
-  s3: { standard: number; standardIa: number; putRequests: number };
+  /** gp3 storage USD per GB-month, provisioned IOPS above free tier, and throughput above free tier. */
+  ebs: { gp3Gb: number; gp3Iops: number; gp3ThroughputMbps?: number };
+  /** `requests` is USD per 1M requests; `gbSeconds` is USD per GB-second; `ephemeralStorageGbSecond` is USD per GB-second above 512 MB. */
+  lambda: { requests: number; gbSeconds: number; ephemeralStorageGbSecond?: number };
+  /** Storage is USD per GB-month; `putRequests`/`getRequests` are USD per 1,000 requests. */
+  s3: { standard: number; standardIa: number; putRequests: number; getRequests?: number };
   /** NAT Gateway USD per hour and USD per GB processed. */
   vpc: { natGatewayHourly: number; natGatewayDataGb: number };
   /** ALB fixed hourly charge and per-LCU-hour capacity charge. */

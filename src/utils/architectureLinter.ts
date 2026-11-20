@@ -252,18 +252,22 @@ export function runArchitectureLinter(
     }
 
     // RULE REL-01: Single-AZ RDS Database (Warning)
-    if (serviceType === 'rds' && !config.multiAz) {
-      findings.push({
-        id: `${node.id}-single-az-rds`,
-        ruleId: 'REL-01',
-        severity: 'warning',
-        pillar: 'Reliability',
-        title: 'RDS Multi-AZ failover is disabled',
-        description: `"${label}" runs in a single Availability Zone; an AZ outage or maintenance event will cause downtime.`,
-        remediation: 'Enable Multi-AZ deployment for synchronous standby replication and automatic failover.',
-        targetId: node.id,
-        targetName: label,
-      });
+    if (serviceType === 'rds') {
+      const deploymentOption =
+        config.deploymentOption ?? (config.multiAz ? 'Multi-AZ DB Instance (2x)' : 'Single-AZ');
+      if (String(deploymentOption) === 'Single-AZ') {
+        findings.push({
+          id: `${node.id}-single-az-rds`,
+          ruleId: 'REL-01',
+          severity: 'warning',
+          pillar: 'Reliability',
+          title: 'RDS Multi-AZ failover is disabled',
+          description: `"${label}" runs in a single Availability Zone; an AZ outage or maintenance event will cause downtime.`,
+          remediation: 'Use a Multi-AZ DB Instance or Multi-AZ DB Cluster deployment for resilience and automatic failover.',
+          targetId: node.id,
+          targetName: label,
+        });
+      }
     }
 
     // RULE REL-02: Single-instance EC2 Single Point of Failure (Info)

@@ -11,7 +11,7 @@ import {
   type SubnetCidrRef,
 } from '../../utils/cidrValidator';
 
-type FieldType = 'text' | 'number' | 'select' | 'checkbox' | 'routes';
+type FieldType = 'text' | 'number' | 'select' | 'checkbox' | 'routes' | 'range';
 
 interface ConfigField {
   key: string;
@@ -19,6 +19,8 @@ interface ConfigField {
   type: FieldType;
   options?: string[];
   step?: number;
+  min?: number;
+  max?: number;
 }
 
 const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
@@ -63,6 +65,12 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
   ],
   ec2: [
     {
+      key: 'architecture',
+      label: 'Architecture',
+      type: 'select',
+      options: ['x86_64', 'arm64'],
+    },
+    {
       key: 'instanceType',
       label: 'Instance Type',
       type: 'select',
@@ -77,11 +85,26 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
         'c6i.large',
       ],
     },
+    {
+      key: 'purchasingOption',
+      label: 'Purchasing Option',
+      type: 'select',
+      options: ['On-Demand', '1-Yr Savings Plan (-28%)'],
+    },
     { key: 'count', label: 'Instance Count', type: 'number', step: 1 },
     { key: 'os', label: 'Operating System', type: 'select', options: ['Linux', 'Windows'] },
+    { key: 'rootVolumeGb', label: 'Root EBS Volume (GB, gp3)', type: 'number', step: 1 },
+    { key: 'internetEgressGb', label: 'Internet Egress (GB/mo)', type: 'number' },
   ],
   lambda: [
+    {
+      key: 'architecture',
+      label: 'Architecture',
+      type: 'select',
+      options: ['x86_64', 'arm64'],
+    },
     { key: 'memoryMb', label: 'Memory (MB)', type: 'number', step: 64 },
+    { key: 'ephemeralStorageMb', label: 'Ephemeral Storage (MB)', type: 'number', step: 64, min: 512, max: 10240 },
     { key: 'requestsMillions', label: 'Invocations (millions)', type: 'number' },
     { key: 'avgDurationMs', label: 'Avg Duration (ms)', type: 'number', step: 10 },
   ],
@@ -93,8 +116,15 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
       type: 'select',
       options: ['db.t4g.micro', 'db.t4g.medium', 'db.m6i.large', 'db.r6g.large'],
     },
-    { key: 'multiAz', label: 'Multi-AZ Deployment', type: 'checkbox' },
-    { key: 'storageGb', label: 'Storage (GB)', type: 'number' },
+    {
+      key: 'deploymentOption',
+      label: 'Deployment Option',
+      type: 'select',
+      options: ['Single-AZ', 'Multi-AZ DB Instance (2x)', 'Multi-AZ DB Cluster (3x)'],
+    },
+    { key: 'storageType', label: 'Storage Type', type: 'select', options: ['gp3', 'io2'] },
+    { key: 'storageGb', label: 'Allocated Storage (GB)', type: 'number' },
+    { key: 'backupRetentionGb', label: 'Backup Storage (GB)', type: 'number' },
   ],
   dynamodb: [
     { key: 'capacityMode', label: 'Capacity Mode', type: 'select', options: ['On-Demand', 'Provisioned'] },
@@ -116,11 +146,14 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
     { key: 'volumeType', label: 'Volume Type', type: 'select', options: ['gp3', 'io2', 'st1'] },
     { key: 'sizeGb', label: 'Volume Size (GB)', type: 'number' },
     { key: 'iops', label: 'Provisioned IOPS', type: 'number', step: 100 },
+    { key: 'throughputMbps', label: 'Throughput (MB/s)', type: 'range', step: 1, min: 125, max: 1000 },
   ],
   s3: [
     { key: 'storageClass', label: 'Storage Class', type: 'select', options: ['Standard', 'Standard-IA'] },
     { key: 'storageGb', label: 'Stored Data (GB)', type: 'number' },
     { key: 'putRequestsThousands', label: 'PUT Requests (thousands)', type: 'number' },
+    { key: 'getRequestsThousands', label: 'GET/SELECT Requests (thousands)', type: 'number' },
+    { key: 'internetEgressGb', label: 'Internet Egress (GB/mo)', type: 'number' },
   ],
   sqs: [
     { key: 'queueType', label: 'Queue Type', type: 'select', options: ['Standard', 'FIFO'] },
@@ -317,7 +350,13 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
               return null;
             }
 
-            const value = config[field.key];
+            let value = config[field.key];
+            if (serviceType === 'rds' && field.key === 'deploymentOption' && value == null) {
+              value = config.multiAz ? 'Multi-AZ DB Instance (2x)' : 'Single-AZ';
+            }
+            if (serviceType === 'ebs' && field.key === 'throughputMbps' && value == null) {
+              value = 125;
+            }
 
             if (field.type === 'routes') {
               return (
@@ -357,7 +396,7 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
                   <span className="mb-1 block text-[10px] text-slate-500">{field.label}</span>
                   <select
                     className={fieldClass}
-                    value={currentAz || String(value ?? '')}
+                    value={isAzField ? (currentAz || String(value ?? '')) : String(value ?? options[0] ?? '')}
                     onChange={(event) => updateField(field.key, event.target.value)}
                   >
                     {options.map((option) => (
@@ -375,6 +414,31 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
               );
             }
 
+            if (field.type === 'range') {
+              const numericValue = Number(value ?? field.min ?? 0);
+              return (
+                <label key={field.key} className="block">
+                  <span className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>{field.label}</span>
+                    <span className="font-mono text-slate-300">{numericValue} MB/s</span>
+                  </span>
+                  <input
+                    className="w-full accent-sky-500"
+                    type="range"
+                    min={field.min}
+                    max={field.max}
+                    step={field.step ?? 1}
+                    value={numericValue}
+                    onChange={(event) => updateField(field.key, Number(event.target.value))}
+                  />
+                  <div className="mt-0.5 flex justify-between text-[9px] text-slate-600">
+                    <span>{field.min} (included)</span>
+                    <span>{field.max}</span>
+                  </div>
+                </label>
+              );
+            }
+
             return (
               <div key={field.key}>
                 <label className="block">
@@ -383,6 +447,8 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
                     className={fieldClass}
                     type={field.type === 'number' ? 'number' : 'text'}
                     step={field.step}
+                    min={field.min}
+                    max={field.max}
                     value={value ?? ''}
                     onChange={(event) =>
                       updateField(field.key, field.type === 'number' ? Number(event.target.value) : event.target.value)

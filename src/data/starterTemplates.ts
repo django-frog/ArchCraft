@@ -112,7 +112,17 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       parentId: 'sub-pub',
       extent: 'parent',
       position: { x: 20, y: 80 },
-      data: { label: 'Web / Reverse Proxy', serviceType: 'ec2', config: { instanceType: 't3.small', count: 2, os: 'Linux' }, securityGroupIds: ['sg-web-public'] },
+      data: {
+        label: 'Web / Reverse Proxy',
+        serviceType: 'ec2',
+        config: {
+          ...AWS_CATALOG.ec2.defaultConfig,
+          instanceType: 't3.small',
+          count: 2,
+          os: 'Linux',
+        },
+        securityGroupIds: ['sg-web-public'],
+      },
     },
     {
       id: 'ec2-app',
@@ -120,7 +130,17 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       parentId: 'sub-priv',
       extent: 'parent',
       position: { x: 25, y: 80 },
-      data: { label: 'Core API Workers', serviceType: 'ec2', config: { instanceType: 't3.medium', count: 2, os: 'Linux' }, securityGroupIds: ['sg-app-private'] },
+      data: {
+        label: 'Core API Workers',
+        serviceType: 'ec2',
+        config: {
+          ...AWS_CATALOG.ec2.defaultConfig,
+          instanceType: 't3.medium',
+          count: 2,
+          os: 'Linux',
+        },
+        securityGroupIds: ['sg-app-private'],
+      },
     },
     {
       id: 'cache-1',
@@ -157,11 +177,46 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
 export const SERVERLESS_EVENT_TEMPLATE: StarterTemplate = {
   nodes: [
     { id: 'cf-s', type: 'serviceNode', position: { x: 60, y: 180 }, data: { label: 'API Edge CDN', serviceType: 'cloudfront', config: { ...AWS_CATALOG.cloudfront.defaultConfig }, securityGroupIds: [] } },
-    { id: 'lmb-api', type: 'serviceNode', position: { x: 320, y: 180 }, data: { label: 'Ingest API Lambda', serviceType: 'lambda', config: { memoryMb: 512, requestsMillions: 15, avgDurationMs: 85 }, securityGroupIds: [] } },
+    {
+      id: 'lmb-api',
+      type: 'serviceNode',
+      position: { x: 320, y: 180 },
+      data: {
+        label: 'Ingest API Lambda',
+        serviceType: 'lambda',
+        config: { ...AWS_CATALOG.lambda.defaultConfig, memoryMb: 512, requestsMillions: 15, avgDurationMs: 85 },
+        securityGroupIds: [],
+      },
+    },
     { id: 'sqs-1', type: 'serviceNode', position: { x: 580, y: 180 }, data: { label: 'Order Events Queue', serviceType: 'sqs', config: { queueType: 'Standard', requestsMillions: 15 }, securityGroupIds: [] } },
-    { id: 'lmb-wrk', type: 'serviceNode', position: { x: 840, y: 180 }, data: { label: 'Async Processor', serviceType: 'lambda', config: { memoryMb: 1024, requestsMillions: 15, avgDurationMs: 220 }, securityGroupIds: [] } },
+    {
+      id: 'lmb-wrk',
+      type: 'serviceNode',
+      position: { x: 840, y: 180 },
+      data: {
+        label: 'Async Processor',
+        serviceType: 'lambda',
+        config: { ...AWS_CATALOG.lambda.defaultConfig, memoryMb: 1024, requestsMillions: 15, avgDurationMs: 220 },
+        securityGroupIds: [],
+      },
+    },
     { id: 'ddb-1', type: 'serviceNode', position: { x: 1100, y: 100 }, data: { label: 'Orders Table', serviceType: 'dynamodb', config: { ...AWS_CATALOG.dynamodb.defaultConfig }, securityGroupIds: [] } },
-    { id: 's3-arch', type: 'serviceNode', position: { x: 1100, y: 270 }, data: { label: 'Event Archive', serviceType: 's3', config: { storageClass: 'Standard-IA', storageGb: 1000, putRequestsThousands: 500 }, securityGroupIds: [] } },
+    {
+      id: 's3-arch',
+      type: 'serviceNode',
+      position: { x: 1100, y: 270 },
+      data: {
+        label: 'Event Archive',
+        serviceType: 's3',
+        config: {
+          ...AWS_CATALOG.s3.defaultConfig,
+          storageClass: 'Standard-IA',
+          storageGb: 1000,
+          putRequestsThousands: 500,
+        },
+        securityGroupIds: [],
+      },
+    },
   ],
   edges: [
     { id: 'se1', source: 'cf-s', target: 'lmb-api', type: 'smoothstep', animated: true, data: { protocol: 'HTTPS', port: '443', label: 'HTTPS :443' } },

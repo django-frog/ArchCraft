@@ -53,6 +53,20 @@ export function generateMermaidDiagram(nodes: AppNode[], edges: AppEdge[]): stri
   return lines.join('\n');
 }
 
+function findParentVpcLabel(nodes: AppNode[], nodeId: string): string {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let current = byId.get(nodeId);
+  const visited = new Set<string>();
+  while (current?.parentId && !visited.has(current.parentId)) {
+    visited.add(current.parentId);
+    const parent = byId.get(current.parentId);
+    if (!parent) return '—';
+    if (parent.data.serviceType === 'vpc') return parent.data.label;
+    current = parent;
+  }
+  return '—';
+}
+
 export function generateMarkdownSpec(params: {
   projectName: string;
   region: string;
@@ -90,6 +104,26 @@ export function generateMarkdownSpec(params: {
     );
     return `| **${node.data.label}** | ${def.shortName} | ${placement} | ${def.getSpecSummary(node.data.config)} | ${sgs} | $${estimate.monthly.toFixed(2)} |`;
   });
+
+  const routeTableRows: string[] = [];
+  nodes
+    .filter((node) => node.data.serviceType === 'subnet')
+    .forEach((subnet) => {
+      const vpc = findParentVpcLabel(nodes, subnet.id);
+      const tier = String(subnet.data.config.tier || '—');
+      const az = String(subnet.data.config.az || '—');
+      const cidr = String(subnet.data.config.cidr || '—');
+      const routes = Array.isArray(subnet.data.config.routeTable) ? subnet.data.config.routeTable : [];
+      if (routes.length === 0) {
+        routeTableRows.push(`| ${escapeCell(subnet.data.label)} | ${escapeCell(vpc)} | ${escapeCell(tier)} | ${escapeCell(az)} | \`${escapeCell(cidr)}\` | — | — |`);
+        return;
+      }
+      routes.forEach((route: any) => {
+        routeTableRows.push(
+          `| ${escapeCell(subnet.data.label)} | ${escapeCell(vpc)} | ${escapeCell(tier)} | ${escapeCell(az)} | \`${escapeCell(cidr)}\` | \`${escapeCell(String(route?.destination ?? ''))}\` | ${escapeCell(String(route?.target ?? ''))} |`
+        );
+      });
+    });
 
   const sgSections = securityGroups
     .map((sg) => {
@@ -129,11 +163,21 @@ export function generateMarkdownSpec(params: {
     ...(itemizedSections.length
       ? ['### Itemized AWS Billing Breakdown', '', ...itemizedSections, '']
       : []),
-    '## 3. Security Groups & Firewall Matrix',
+    '## 3. VPC Route Tables',
+    '',
+    ...(routeTableRows.length
+      ? [
+          '| Subnet | VPC | Tier | AZ | CIDR | Destination | Target |',
+          '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+          ...routeTableRows,
+          '',
+        ]
+      : ['No subnet route tables configured.', '']),
+    '## 4. Security Groups & Firewall Matrix',
     '',
     sgSections,
     '',
-    '## 4. Well-Architected Linter & Security Review',
+    '## 5. Well-Architected Linter & Security Review',
     '',
     `- **Architecture Health Score:** **${score}/100**`,
     '',

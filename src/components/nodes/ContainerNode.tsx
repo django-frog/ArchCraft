@@ -4,6 +4,7 @@ import { Boxes, Globe, Layers2, MapPin, Route } from 'lucide-react';
 import { AWS_CATALOG } from '../../data/awsCatalog';
 import { useArchitectureLint } from '../../hooks/useArchitectureLint';
 import { type AppNode, useArchStore } from '../../store/useArchStore';
+import type { RouteTableEntry } from '../../types/architecture';
 import FindingBadge from './FindingBadge';
 
 const ContainerNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
@@ -16,6 +17,13 @@ const ContainerNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
   const isVpc = data.serviceType === 'vpc';
   const tier = String(data.config.tier || 'Private');
   const isPublic = tier === 'Public';
+
+  const routes: RouteTableEntry[] = Array.isArray(data.config.routeTable) ? data.config.routeTable : [];
+  const defaultRoute = routes.find((route) => String(route?.destination ?? '').trim() === '0.0.0.0/0');
+  const defaultRouteTarget = String(defaultRoute?.target ?? '');
+  const defaultRouteLabel = defaultRoute
+    ? `0.0.0.0/0 → ${defaultRouteTarget || '—'}`
+    : 'no default route';
 
   const border = isVpc
     ? 'border-violet-500/70 border-dashed'
@@ -89,9 +97,23 @@ const ContainerNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
               <span className="flex items-center gap-1 rounded border border-white/10 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-300">
                 <MapPin size={10} /> {String(data.config.az || '—')}
               </span>
-              <span className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-slate-400">
-                {isPublic ? <Globe size={10} /> : <Boxes size={10} />}
-                {isPublic ? 'IGW' : 'Private'}
+              {Boolean(data.config.mapPublicIpOnLaunch) && (
+                <span
+                  className="flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-500/10 px-1 py-0.5 text-[10px] text-cyan-200"
+                  title="Map public IP on launch"
+                >
+                  <Globe size={10} /> Public IP
+                </span>
+              )}
+              <span
+                className={`flex items-center gap-1 rounded border px-1 py-0.5 text-[10px] ${
+                  defaultRouteTarget === 'igw'
+                    ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-200'
+                    : 'border-white/10 bg-slate-900/50 text-slate-300'
+                }`}
+                title="Primary default route"
+              >
+                <Route size={10} /> {defaultRouteLabel}
               </span>
             </>
           )}

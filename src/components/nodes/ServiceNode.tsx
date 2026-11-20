@@ -3,9 +3,12 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import {
   Cloud,
   Database,
+  Globe,
   HardDrive,
   Layers2,
   MessageSquare,
+  Network,
+  Plug,
   Server,
   Shield,
   Zap,
@@ -21,6 +24,9 @@ import FindingBadge from './FindingBadge';
 const SERVICE_ICONS: Record<AwsServiceType, LucideIcon> = {
   vpc: Layers2,
   subnet: Layers2,
+  igw: Globe,
+  alb: Network,
+  vpce: Plug,
   ec2: Server,
   lambda: Zap,
   rds: Database,

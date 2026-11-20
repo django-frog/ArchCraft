@@ -1,6 +1,9 @@
 export type AwsServiceType =
   | 'vpc'
   | 'subnet'
+  | 'igw'
+  | 'alb'
+  | 'vpce'
   | 'ec2'
   | 'lambda'
   | 'rds'
@@ -12,6 +15,35 @@ export type AwsServiceType =
   | 'dynamodb';
 
 export type ServiceCategory = 'Networking' | 'Compute' | 'Database' | 'Storage' | 'Integration & Edge';
+
+export interface RouteTableEntry {
+  destination: string;
+  target: string;
+}
+
+export interface SubnetConfig {
+  tier: 'Public' | 'Private';
+  cidr: string;
+  az: string;
+  mapPublicIpOnLaunch: boolean;
+  routeTable: RouteTableEntry[];
+}
+
+export interface AlbConfig {
+  scheme: 'internet-facing' | 'internal';
+  /** Capacity units kept warm (new connections / active connections / rules). */
+  lcuEstimate: number;
+  /** Monthly processed bytes, used to derive additional byte LCUs. */
+  dataProcessedGb: number;
+}
+
+export interface VpceConfig {
+  endpointType: 'Gateway (S3/DynamoDB)' | 'Interface (PrivateLink)';
+  targetService: 's3' | 'dynamodb' | 'sqs' | 'secretsmanager';
+  /** Number of interface ENIs (one per AZ) for PrivateLink endpoints. */
+  azCount: number;
+  dataProcessedGb: number;
+}
 
 export interface SecurityRule {
   id: string;
@@ -76,6 +108,10 @@ export interface RegionRates {
   s3: { standard: number; standardIa: number; putRequests: number };
   /** NAT Gateway USD per hour and USD per GB processed. */
   vpc: { natGatewayHourly: number; natGatewayDataGb: number };
+  /** ALB fixed hourly charge and per-LCU-hour capacity charge. */
+  alb: { hourly: number; lcuHourly: number };
+  /** Interface VPC endpoint: hourly charge per AZ and USD per GB processed. */
+  vpce: { interfaceHourly: number; interfaceDataGb: number };
   /** USD per node-hour, keyed by cache node type. */
   elasticache: Record<string, number>;
   /** `wru` / `rru` are USD per million request units; storage is USD per GB-month. */

@@ -16,6 +16,20 @@ export const AWS_REGIONS: Record<string, { name: string }> = {
   'ap-northeast-1': { name: 'Asia Pacific (Tokyo)' },
 };
 
+/** Availability zones available to subnets in each supported region. */
+export const AWS_AVAILABILITY_ZONES: Record<string, string[]> = {
+  'us-east-1': ['us-east-1a', 'us-east-1b', 'us-east-1c'],
+  'us-west-2': ['us-west-2a', 'us-west-2b', 'us-west-2c'],
+  'eu-west-1': ['eu-west-1a', 'eu-west-1b', 'eu-west-1c'],
+  'eu-central-1': ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'],
+  'ap-south-1': ['ap-south-1a', 'ap-south-1b', 'ap-south-1c'],
+  'ap-northeast-1': ['ap-northeast-1a', 'ap-northeast-1b', 'ap-northeast-1c'],
+};
+
+export function getAvailabilityZones(region: string): string[] {
+  return AWS_AVAILABILITY_ZONES[region] ?? ['a', 'b', 'c'].map((suffix) => `${region}${suffix}`);
+}
+
 const HOURS_PER_MONTH = 730;
 
 const estimate = (lineItems: CostLineItem[]): CostEstimate => ({
@@ -75,9 +89,97 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       tier: 'Public',
       cidr: '10.0.1.0/24',
       az: 'us-east-1a',
+      mapPublicIpOnLaunch: true,
+      routeTable: [
+        { destination: '10.0.0.0/16', target: 'local' },
+        { destination: '0.0.0.0/0', target: 'igw' },
+      ],
     },
     calculateMonthlyCost: () => estimate([{ label: 'Subnet (no AWS charge)', amount: 0 }]),
-    getSpecSummary: (cfg) => `${cfg.tier} • ${cfg.cidr} (${cfg.az})`,
+    getSpecSummary: (cfg) =>
+      `${cfg.tier} • ${cfg.cidr} (${cfg.az})${cfg.mapPublicIpOnLaunch ? ' • auto public IP' : ''}`,
+  },
+
+  igw: {
+    type: 'igw',
+    name: 'Internet Gateway',
+    shortName: 'IGW',
+    category: 'Networking',
+    color: '#f472b6',
+    defaultConfig: {},
+    calculateMonthlyCost: () => estimate([{ label: 'Internet Gateway (no AWS charge)', amount: 0 }]),
+    getSpecSummary: () => 'VPC attach point • no hourly charge',
+  },
+
+  alb: {
+    type: 'alb',
+    name: 'Application Load Balancer',
+    shortName: 'ALB',
+    category: 'Networking',
+    color: '#fb7185',
+    defaultConfig: {
+      scheme: 'internet-facing',
+      lcuEstimate: 2,
+      dataProcessedGb: 100,
+    },
+    calculateMonthlyCost: (cfg, rates) => {
+      const scheme = String(cfg.scheme || 'internet-facing');
+      const lcuEstimate = Math.max(0, Number(cfg.lcuEstimate ?? 2));
+      const dataProcessedGb = Math.max(0, Number(cfg.dataProcessedGb || 0));
+      // AWS bills one processed-bytes LCU per GB per hour (Layer 7).
+      const byteLcus = Math.ceil(dataProcessedGb / HOURS_PER_MONTH);
+      const lcus = Math.max(lcuEstimate, byteLcus);
+      const hourly = fallbackRate(rates.alb?.hourly, BUILTIN_REGION_RATES.alb.hourly);
+      const lcuRate = fallbackRate(rates.alb?.lcuHourly, BUILTIN_REGION_RATES.alb.lcuHourly);
+      return estimate([
+        {
+          label: `${scheme} ALB (${HOURS_PER_MONTH} hrs × ${rateLabel(hourly)}/hr)`,
+          amount: HOURS_PER_MONTH * hourly,
+        },
+        {
+          label: `ALB Capacity Units (${lcus} LCU × ${HOURS_PER_MONTH} hrs × ${rateLabel(lcuRate)}/LCU-hr; ${dataProcessedGb} GB/mo)`,
+          amount: lcus * HOURS_PER_MONTH * lcuRate,
+        },
+      ]);
+    },
+    getSpecSummary: (cfg) =>
+      `${cfg.scheme} • ${cfg.lcuEstimate || 0} LCU • ${cfg.dataProcessedGb || 0} GB/mo`,
+  },
+
+  vpce: {
+    type: 'vpce',
+    name: 'VPC Endpoint',
+    shortName: 'VPCE',
+    category: 'Networking',
+    color: '#14b8a6',
+    defaultConfig: {
+      endpointType: 'Gateway (S3/DynamoDB)',
+      targetService: 's3',
+      azCount: 2,
+      dataProcessedGb: 100,
+    },
+    calculateMonthlyCost: (cfg, rates) => {
+      const endpointType = String(cfg.endpointType || 'Gateway (S3/DynamoDB)');
+      if (!endpointType.startsWith('Interface')) {
+        return estimate([{ label: `Gateway endpoint for ${cfg.targetService || 's3'} (no AWS charge)`, amount: 0 }]);
+      }
+
+      const azCount = Math.max(1, Number(cfg.azCount || 1));
+      const gb = Math.max(0, Number(cfg.dataProcessedGb || 0));
+      const hourly = fallbackRate(rates.vpce?.interfaceHourly, BUILTIN_REGION_RATES.vpce.interfaceHourly);
+      const perGb = fallbackRate(rates.vpce?.interfaceDataGb, BUILTIN_REGION_RATES.vpce.interfaceDataGb);
+      return estimate([
+        {
+          label: `PrivateLink interface (${azCount} AZ × ${HOURS_PER_MONTH} hrs × ${rateLabel(hourly)}/hr)`,
+          amount: azCount * HOURS_PER_MONTH * hourly,
+        },
+        {
+          label: `Endpoint data processed (${gb} GB × ${rateLabel(perGb)}/GB)`,
+          amount: gb * perGb,
+        },
+      ]);
+    },
+    getSpecSummary: (cfg) => `${cfg.endpointType} • ${cfg.targetService}`,
   },
 
   cloudfront: {

@@ -17,7 +17,7 @@ import type {
   SecurityGroup,
   SecurityRule,
 } from '../types/architecture';
-import { AWS_CATALOG } from '../data/awsCatalog';
+import { AWS_CATALOG, getAvailabilityZones } from '../data/awsCatalog';
 import { getRegionRates, loadAwsPrices } from '../data/pricingData';
 import { DEFAULT_SGS, THREE_TIER_TEMPLATE, SERVERLESS_EVENT_TEMPLATE } from '../data/starterTemplates';
 import type { ArchCraftProjectFile } from '../utils/projectSerializer';
@@ -85,7 +85,26 @@ export const useArchStore = create<ArchState>()(
       },
 
       setProjectName: (projectName) => set({ projectName }),
-      setRegion: (region) => set({ region }),
+      setRegion: (region) =>
+        set((state) => {
+          const zones = getAvailabilityZones(region);
+          // Keep subnet AZs in sync with the selected region, preserving the
+          // AZ letter where possible (e.g. us-east-1b -> eu-west-1b).
+          const nodes = state.nodes.map((node) => {
+            if (node.data.serviceType !== 'subnet') return node;
+            const az = String(node.data.config.az || '');
+            if (zones.includes(az)) return node;
+            const letter = az.match(/[a-z]$/)?.[0];
+            const nextAz = letter
+              ? (zones.find((zone) => zone.endsWith(letter)) ?? zones[0])
+              : zones[0];
+            return {
+              ...node,
+              data: { ...node.data, config: { ...node.data.config, az: nextAz } },
+            };
+          });
+          return { region, nodes };
+        }),
       setSelectedNode: (selectedNodeId) => set({ selectedNodeId, selectedEdgeId: null }),
       setSelectedEdge: (selectedEdgeId) => set({ selectedEdgeId, selectedNodeId: null }),
 

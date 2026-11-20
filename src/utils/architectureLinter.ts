@@ -1,5 +1,6 @@
 import type { AppNode, AppEdge } from '../store/useArchStore';
-import type { SecurityGroup } from '../types/architecture';
+import type { RouteTableEntry, SecurityGroup } from '../types/architecture';
+import { findOverlappingSubnets, isSubnetContainedInVpc, parseCidr } from './cidrValidator';
 
 export type LintSeverity = 'critical' | 'warning' | 'info';
 export type WellArchitectedPillar = 'Security' | 'Reliability' | 'Cost Optimization' | 'Performance';
@@ -38,6 +39,63 @@ export function runArchitectureLinter(
     }
     return { subnet, vpc };
   };
+
+  const getSubnetRoutes = (subnet: AppNode): RouteTableEntry[] =>
+    Array.isArray(subnet.data.config.routeTable) ? subnet.data.config.routeTable : [];
+
+  const hasDefaultRouteTo = (routes: RouteTableEntry[], target: string): boolean =>
+    routes.some(
+      (route) =>
+        String(route?.destination ?? '').trim() === '0.0.0.0/0' &&
+        String(route?.target ?? '').trim() === target
+    );
+
+  const getVpcSubnets = (vpcId: string): AppNode[] =>
+    nodes.filter((node) => node.data.serviceType === 'subnet' && getAncestors(node).vpc?.id === vpcId);
+
+  const hasIgwInVpc = (vpcId: string): boolean =>
+    nodes.some((node) => node.data.serviceType === 'igw' && getAncestors(node).vpc?.id === vpcId);
+
+  const hasGatewayEndpoint = (vpcId: string, targets: string[]): boolean =>
+    nodes.some(
+      (node) =>
+        node.data.serviceType === 'vpce' &&
+        getAncestors(node).vpc?.id === vpcId &&
+        String(node.data.config.endpointType || '').startsWith('Gateway') &&
+        targets.includes(String(node.data.config.targetService || ''))
+    );
+
+  // --- NET-01: overlapping sibling subnets (emitted once per pair) ---
+  const subnetsByVpc = new Map<string, AppNode[]>();
+  for (const node of nodes) {
+    if (node.data.serviceType !== 'subnet') continue;
+    const vpc = getAncestors(node).vpc;
+    if (!vpc) continue;
+    subnetsByVpc.set(vpc.id, [...(subnetsByVpc.get(vpc.id) ?? []), node]);
+  }
+  for (const [vpcId, subnets] of subnetsByVpc) {
+    const vpc = nodeMap.get(vpcId);
+    const overlaps = findOverlappingSubnets(
+      subnets.map((subnet) => ({
+        id: subnet.id,
+        cidr: String(subnet.data.config.cidr || ''),
+        label: subnet.data.label,
+      }))
+    );
+    for (const overlap of overlaps) {
+      findings.push({
+        id: `${overlap.second.id}-cidr-overlap-${overlap.first.id}`,
+        ruleId: 'NET-01',
+        severity: 'critical',
+        pillar: 'Reliability',
+        title: 'Overlapping Subnet CIDRs in the same VPC',
+        description: `"${overlap.second.label || overlap.second.id}" (${overlap.second.cidr}) overlaps "${overlap.first.label || overlap.first.id}" (${overlap.first.cidr}) inside VPC "${vpc?.data.label || vpcId}".`,
+        remediation: 'Assign non-overlapping CIDR blocks that are each strictly contained in the VPC CIDR (e.g. 10.0.1.0/24 and 10.0.2.0/24).',
+        targetId: overlap.second.id,
+        targetName: overlap.second.label || overlap.second.id,
+      });
+    }
+  }
 
   // --- NODE-LEVEL RULES ---
   for (const node of nodes) {
@@ -87,6 +145,110 @@ export function runArchitectureLinter(
         targetId: node.id,
         targetName: label,
       });
+    }
+
+    // RULE NET-01: Invalid / non-contained Subnet CIDR (Critical)
+    if (serviceType === 'subnet') {
+      const cidr = String(config.cidr || '');
+      const vpcCidr = vpc ? String(vpc.data.config.cidr || '') : '';
+      const routes = getSubnetRoutes(node);
+
+      let title = '';
+      let description = '';
+      if (!parseCidr(cidr)) {
+        title = 'Invalid Subnet CIDR block';
+        description = `"${label}" has an invalid CIDR "${cidr || '(empty)'}"; expected an IPv4 block such as 10.0.1.0/24.`;
+      } else if (!vpc) {
+        title = 'Subnet is not attached to a VPC';
+        description = `"${label}" has no parent VPC, so its CIDR cannot be validated against a VPC range.`;
+      } else if (!isSubnetContainedInVpc(cidr, vpcCidr)) {
+        title = 'Subnet CIDR falls outside its VPC';
+        description = `"${label}" uses ${cidr}, which is not strictly contained inside VPC "${vpc.data.label}" (${vpcCidr}).`;
+      }
+      if (title) {
+        findings.push({
+          id: `${node.id}-invalid-cidr`,
+          ruleId: 'NET-01',
+          severity: 'critical',
+          pillar: 'Reliability',
+          title,
+          description,
+          remediation: 'Use a smaller CIDR block fully inside the VPC range (for example 10.0.1.0/24 inside 10.0.0.0/16).',
+          targetId: node.id,
+          targetName: label,
+        });
+      }
+
+      // RULE NET-02: IGW default route without an Internet Gateway in the VPC (Critical)
+      if (hasDefaultRouteTo(routes, 'igw') && (!vpc || !hasIgwInVpc(vpc.id))) {
+        findings.push({
+          id: `${node.id}-igw-route-without-igw`,
+          ruleId: 'NET-02',
+          severity: 'critical',
+          pillar: 'Reliability',
+          title: 'Default route targets a missing Internet Gateway',
+          description: `"${label}" routes 0.0.0.0/0 to an Internet Gateway, but ${vpc ? `VPC "${vpc.data.label}" has no igw node` : 'it has no parent VPC'}.`,
+          remediation: 'Add an Internet Gateway node inside the VPC and attach it, or change the default route to a NAT Gateway.',
+          targetId: node.id,
+          targetName: label,
+        });
+      }
+
+      // RULE FIN-01: Paid NAT used for S3/DynamoDB without a free Gateway Endpoint (Info)
+      if (
+        config.tier === 'Private' &&
+        hasDefaultRouteTo(routes, 'nat-gw') &&
+        vpc &&
+        Number(vpc.data.config.natGateways || 0) > 0 &&
+        !hasGatewayEndpoint(vpc.id, ['s3', 'dynamodb'])
+      ) {
+        findings.push({
+          id: `${node.id}-nat-without-gateway-endpoint`,
+          ruleId: 'FIN-01',
+          severity: 'info',
+          pillar: 'Cost Optimization',
+          title: 'S3/DynamoDB traffic billed through NAT Gateway',
+          description: `"${label}" sends 0.0.0.0/0 traffic through a paid NAT Gateway, but VPC "${vpc.data.label}" has no free Gateway VPC Endpoint for S3 or DynamoDB.`,
+          remediation: 'Add a Gateway (S3/DynamoDB) VPC Endpoint to the VPC so regional AWS API traffic bypasses NAT and its data-processing charges.',
+          targetId: node.id,
+          targetName: label,
+        });
+      }
+    }
+
+    // RULE NET-03: Internet-facing ALB placement / HA across AZs (Warning)
+    if (serviceType === 'alb' && config.scheme === 'internet-facing') {
+      const problems: string[] = [];
+      if (!subnet || !hasDefaultRouteTo(getSubnetRoutes(subnet), 'igw')) {
+        problems.push('it is not placed in a Subnet with a 0.0.0.0/0 → igw route');
+      }
+      if (!vpc) {
+        problems.push('it is not enclosed in a VPC');
+      } else {
+        if (!hasIgwInVpc(vpc.id)) problems.push('its VPC has no Internet Gateway node');
+        const azs = new Set(
+          getVpcSubnets(vpc.id)
+            .map((candidate) => String(candidate.data.config.az || '').trim())
+            .filter(Boolean)
+        );
+        if (azs.size < 2) {
+          problems.push(`its VPC has only ${azs.size} Availability Zone${azs.size === 1 ? '' : 's'} with subnets`);
+        }
+      }
+
+      if (problems.length > 0) {
+        findings.push({
+          id: `${node.id}-alb-not-ha`,
+          ruleId: 'NET-03',
+          severity: 'warning',
+          pillar: 'Reliability',
+          title: 'Internet-facing ALB is not highly available',
+          description: `"${label}" cannot serve internet traffic with high availability: ${problems.join('; ')}.`,
+          remediation: 'Place the ALB in Public Subnets with an IGW route spanning at least two Availability Zones in the same VPC.',
+          targetId: node.id,
+          targetName: label,
+        });
+      }
     }
 
     // RULE REL-01: Single-AZ RDS Database (Warning)

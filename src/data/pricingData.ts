@@ -56,6 +56,8 @@ export const BUILTIN_REGION_RATES: RegionRates = {
   lambda: { requests: 0.2, gbSeconds: 0.0000166667 },
   s3: { standard: 0.023, standardIa: 0.0125, putRequests: 0.005 },
   vpc: { natGatewayHourly: 0.045, natGatewayDataGb: 0.045 },
+  alb: { hourly: 0.0225, lcuHourly: 0.008 },
+  vpce: { interfaceHourly: 0.01, interfaceDataGb: 0.01 },
   elasticache: {
     'cache.t4g.micro': 0.016,
     'cache.t4g.medium': 0.068,

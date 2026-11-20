@@ -1,6 +1,7 @@
 import type { AppNode, AppEdge } from '../store/useArchStore';
 import type { SecurityGroup } from '../types/architecture';
 import { AWS_CATALOG } from './awsCatalog';
+import { createDefaultRouteTable } from '../utils/cidrValidator';
 
 export interface StarterTemplate {
   nodes: AppNode[];
@@ -58,7 +59,18 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       extent: 'parent',
       position: { x: 30, y: 70 },
       style: { width: 220, height: 410 },
-      data: { label: 'Public Subnet', serviceType: 'subnet', config: { tier: 'Public', cidr: '10.0.1.0/24', az: 'us-east-1a' }, securityGroupIds: [] },
+      data: {
+        label: 'Public Subnet',
+        serviceType: 'subnet',
+        config: {
+          ...AWS_CATALOG.subnet.defaultConfig,
+          cidr: '10.0.1.0/24',
+          az: 'us-east-1a',
+          mapPublicIpOnLaunch: true,
+          routeTable: createDefaultRouteTable('Public', '10.0.0.0/16'),
+        },
+        securityGroupIds: [],
+      },
     },
     {
       id: 'sub-priv',
@@ -67,7 +79,32 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       extent: 'parent',
       position: { x: 280, y: 70 },
       style: { width: 450, height: 410 },
-      data: { label: 'Private App & Data Subnet', serviceType: 'subnet', config: { tier: 'Private', cidr: '10.0.2.0/24', az: 'us-east-1b' }, securityGroupIds: [] },
+      data: {
+        label: 'Private App & Data Subnet',
+        serviceType: 'subnet',
+        config: {
+          ...AWS_CATALOG.subnet.defaultConfig,
+          tier: 'Private',
+          cidr: '10.0.2.0/24',
+          az: 'us-east-1b',
+          mapPublicIpOnLaunch: false,
+          routeTable: createDefaultRouteTable('Private', '10.0.0.0/16'),
+        },
+        securityGroupIds: [],
+      },
+    },
+    {
+      id: 'igw-main',
+      type: 'serviceNode',
+      parentId: 'sub-pub',
+      extent: 'parent',
+      position: { x: 10, y: 205 },
+      data: {
+        label: 'Internet Gateway',
+        serviceType: 'igw',
+        config: { ...AWS_CATALOG.igw.defaultConfig },
+        securityGroupIds: [],
+      },
     },
     {
       id: 'ec2-web',

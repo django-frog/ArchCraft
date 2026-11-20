@@ -49,6 +49,7 @@ const DEFAULT_TIMEOUTS = {
   AWSLambda: 90_000,
   AmazonDynamoDB: 60_000,
   AmazonVPC: 60_000,
+  AWSELBv2: 60_000,
   AmazonCloudFront: 60_000,
 };
 
@@ -115,6 +116,8 @@ const FALLBACK_REGION = {
   lambda: { requests: 0.2, gbSeconds: 0.0000166667 },
   s3: { standard: 0.023, standardIa: 0.0125, putRequests: 0.005 },
   vpc: { natGatewayHourly: 0.045, natGatewayDataGb: 0.045 },
+  alb: { hourly: 0.0225, lcuHourly: 0.008 },
+  vpce: { interfaceHourly: 0.01, interfaceDataGb: 0.01 },
   elasticache: {
     'cache.t4g.micro': 0.016,
     'cache.t4g.medium': 0.068,
@@ -429,14 +432,33 @@ const services = {
 
   AmazonVPC: {
     timeout: 60_000,
-    filter: (product) => /NatGateway/i.test(product.attributes?.usagetype || ''),
+    filter: (product) => /NatGateway|VpcEndpoint/i.test(product.attributes?.usagetype || ''),
     extract: (product, dims, out) => {
       const usage = product.attributes?.usagetype || '';
       if (/NatGateway-Hours/i.test(usage)) keepFirst(out.vpc, 'natGatewayHourly', firstHourly(dims));
       if (/NatGateway-Bytes/i.test(usage)) {
         keepFirst(out.vpc, 'natGatewayDataGb', positive(dims, (d) => /^GB$|GigaBytes/i.test(d.unit)));
       }
+      if (/VpcEndpoint-Hours/i.test(usage)) {
+        keepFirst(out.vpce, 'interfaceHourly', firstHourly(dims));
+      }
+      if (/VpcEndpoint-Bytes/i.test(usage)) {
+        keepFirst(out.vpce, 'interfaceDataGb', positive(dims, (d) => /^GB$|GigaBytes/i.test(d.unit)));
+      }
     },
+  },
+
+  AWSELBv2: {
+    timeout: 60_000,
+    filter: (product) => /ApplicationLoadBalancer.*UsageHrs|LCU/i.test(product.attributes?.usagetype || ''),
+    extract: (product, dims, out) => {
+      const usage = product.attributes?.usagetype || '';
+      if (/UsageHrs/i.test(usage) && !/LCU/i.test(usage)) {
+        keepFirst(out.alb, 'hourly', firstHourly(dims));
+      }
+      if (/LCU/i.test(usage)) keepFirst(out.alb, 'lcuHourly', firstHourly(dims));
+    },
+    isComplete: (out) => out.alb.hourly !== undefined && out.alb.lcuHourly !== undefined,
   },
 
   AmazonElastiCache: {
@@ -518,7 +540,8 @@ const SERVICE_SHAPES = {
   },
   AWSLambda: { lambda: {} },
   AmazonS3: { s3: {} },
-  AmazonVPC: { vpc: {} },
+  AmazonVPC: { vpc: {}, vpce: {} },
+  AWSELBv2: { alb: {} },
   AmazonElastiCache: { elasticache: {} },
   AmazonDynamoDB: { dynamodb: {} },
   AmazonCloudFront: { cloudfront: {} },

@@ -1,11 +1,17 @@
 import { useMemo } from 'react';
-import { Settings2 } from 'lucide-react';
-import { AWS_CATALOG } from '../../data/awsCatalog';
+import { Plus, Settings2, Trash2 } from 'lucide-react';
+import { AWS_CATALOG, getAvailabilityZones } from '../../data/awsCatalog';
 import { getRegionRates } from '../../data/pricingData';
 import { useArchStore, type AppNode } from '../../store/useArchStore';
-import type { AwsServiceType } from '../../types/architecture';
+import type { AwsServiceType, RouteTableEntry } from '../../types/architecture';
+import {
+  createDefaultRouteTable,
+  formatUsableIpCount,
+  getSubnetCidrErrors,
+  type SubnetCidrRef,
+} from '../../utils/cidrValidator';
 
-type FieldType = 'text' | 'number' | 'select' | 'checkbox';
+type FieldType = 'text' | 'number' | 'select' | 'checkbox' | 'routes';
 
 interface ConfigField {
   key: string;
@@ -24,12 +30,31 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
   subnet: [
     { key: 'tier', label: 'Tier', type: 'select', options: ['Public', 'Private'] },
     { key: 'cidr', label: 'CIDR Block', type: 'text' },
+    { key: 'az', label: 'Availability Zone', type: 'select' },
+    { key: 'mapPublicIpOnLaunch', label: 'Map Public IP on Launch', type: 'checkbox' },
+    { key: 'routeTable', label: 'Route Table', type: 'routes' },
+  ],
+  igw: [],
+  alb: [
+    { key: 'scheme', label: 'Scheme', type: 'select', options: ['internet-facing', 'internal'] },
+    { key: 'lcuEstimate', label: 'LCU Estimate', type: 'number', step: 1 },
+    { key: 'dataProcessedGb', label: 'Data Processed (GB/mo)', type: 'number' },
+  ],
+  vpce: [
     {
-      key: 'az',
-      label: 'Availability Zone',
+      key: 'endpointType',
+      label: 'Endpoint Type',
       type: 'select',
-      options: ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-west-2a', 'us-west-2b', 'eu-west-1a'],
+      options: ['Gateway (S3/DynamoDB)', 'Interface (PrivateLink)'],
     },
+    {
+      key: 'targetService',
+      label: 'Target Service',
+      type: 'select',
+      options: ['s3', 'dynamodb', 'sqs', 'secretsmanager'],
+    },
+    { key: 'azCount', label: 'Availability Zones (interfaces)', type: 'number', step: 1 },
+    { key: 'dataProcessedGb', label: 'Data Processed (GB/mo, interface)', type: 'number' },
   ],
   cloudfront: [
     { key: 'dataTransferOutGb', label: 'Data Transfer Out (GB)', type: 'number' },
@@ -105,6 +130,91 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
 
 const fieldClass =
   'w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-500';
+const ROUTE_TARGETS = ['local', 'igw', 'nat-gw', 'vpce'];
+
+function findParentVpc(nodes: AppNode[], nodeId: string): AppNode | undefined {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let current = byId.get(nodeId);
+  const visited = new Set<string>();
+
+  while (current?.parentId && !visited.has(current.parentId)) {
+    visited.add(current.parentId);
+    const parent = byId.get(current.parentId);
+    if (!parent) return undefined;
+    if (parent.data.serviceType === 'vpc') return parent;
+    current = parent;
+  }
+  return undefined;
+}
+
+function normalizeRoutes(value: unknown): RouteTableEntry[] {
+  if (!Array.isArray(value)) return createDefaultRouteTable('Public');
+  return value
+    .filter((route): route is Record<string, unknown> => typeof route === 'object' && route !== null)
+    .map((route) => ({
+      destination: String(route.destination ?? ''),
+      target: String(route.target ?? 'igw'),
+    }));
+}
+
+interface RouteTableEditorProps {
+  routes: RouteTableEntry[];
+  onChange: (routes: RouteTableEntry[]) => void;
+}
+
+function RouteTableEditor({ routes, onChange }: RouteTableEditorProps) {
+  const updateRoute = (index: number, patch: Partial<RouteTableEntry>) =>
+    onChange(routes.map((route, i) => (i === index ? { ...route, ...patch } : route)));
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+        <span>Route Table</span>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded border border-slate-700 px-1.5 py-0.5 text-sky-300 hover:border-sky-500"
+          onClick={() => onChange([...routes, { destination: '', target: 'igw' }])}
+        >
+          <Plus size={10} /> Add route
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {routes.map((route, index) => (
+          <div key={index} className="flex items-center gap-1">
+            <input
+              className={`${fieldClass} min-w-0 flex-1`}
+              value={route.destination}
+              placeholder="0.0.0.0/0"
+              aria-label={`Route ${index + 1} destination CIDR`}
+              onChange={(event) => updateRoute(index, { destination: event.target.value })}
+            />
+            <select
+              className={`${fieldClass} w-24 shrink-0`}
+              value={route.target}
+              aria-label={`Route ${index + 1} target`}
+              onChange={(event) => updateRoute(index, { target: event.target.value })}
+            >
+              {ROUTE_TARGETS.map((target) => (
+                <option key={target} value={target}>
+                  {target}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="shrink-0 rounded border border-slate-700 p-1 text-slate-400 hover:border-red-500 hover:text-red-400"
+              aria-label={`Remove route ${index + 1}`}
+              onClick={() => onChange(routes.filter((_, i) => i !== index))}
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+        ))}
+        {routes.length === 0 && <p className="text-[10px] text-slate-600">No routes configured.</p>}
+      </div>
+    </div>
+  );
+}
 
 interface NodeConfigFieldsProps {
   node: AppNode;
@@ -115,11 +225,57 @@ interface NodeConfigFieldsProps {
 export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }: NodeConfigFieldsProps) {
   const region = useArchStore((s) => s.region);
   const prices = useArchStore((s) => s.prices);
+  const nodes = useArchStore((s) => s.nodes);
   const rates = useMemo(() => getRegionRates(region, prices), [region, prices]);
   const estimate = useMemo(
     () => AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config, rates),
     [node, rates]
   );
+
+  const serviceType = node.data.serviceType;
+  const config = node.data.config;
+  const isSubnet = serviceType === 'subnet';
+  const parentVpc = useMemo(() => findParentVpc(nodes, node.id), [nodes, node.id]);
+  const azOptions = useMemo(() => getAvailabilityZones(region), [region]);
+
+  const subnetValidation = useMemo(() => {
+    if (!isSubnet) return null;
+    const cidr = String(config.cidr ?? '');
+    const vpcCidr = parentVpc ? String(parentVpc.data.config.cidr ?? '') : null;
+    const siblings: SubnetCidrRef[] = nodes
+      .filter(
+        (candidate) =>
+          candidate.id !== node.id &&
+          candidate.data.serviceType === 'subnet' &&
+          findParentVpc(nodes, candidate.id)?.id === parentVpc?.id
+      )
+      .map((candidate) => ({
+        id: candidate.id,
+        cidr: String(candidate.data.config.cidr ?? ''),
+        label: candidate.data.label,
+      }));
+
+    return {
+      usable: formatUsableIpCount(cidr),
+      errors: getSubnetCidrErrors(cidr, vpcCidr, siblings),
+    };
+  }, [nodes, node.id, config.cidr, parentVpc, isSubnet]);
+
+  const updateField = (key: string, value: any) => {
+    if (isSubnet && key === 'tier') {
+      const tier = value === 'Public' ? 'Public' : 'Private';
+      onUpdateConfig(node.id, {
+        tier,
+        mapPublicIpOnLaunch: tier === 'Public',
+        routeTable: createDefaultRouteTable(
+          tier,
+          parentVpc ? String(parentVpc.data.config.cidr || '') : undefined
+        ),
+      });
+      return;
+    }
+    onUpdateConfig(node.id, { [key]: value });
+  };
 
   return (
     <>
@@ -135,9 +291,9 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
         <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
           <span
             className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: AWS_CATALOG[node.data.serviceType].color }}
+            style={{ backgroundColor: AWS_CATALOG[serviceType].color }}
           />
-          {AWS_CATALOG[node.data.serviceType].name}
+          {AWS_CATALOG[serviceType].name}
           <span className="ml-auto font-mono">{node.id}</span>
         </div>
       </div>
@@ -147,8 +303,31 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
           <Settings2 size={12} /> Configuration
         </div>
         <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
-          {CONFIG_FIELDS[node.data.serviceType].map((field) => {
-            const value = node.data.config[field.key];
+          {CONFIG_FIELDS[serviceType].length === 0 && (
+            <p className="text-[10px] leading-relaxed text-slate-500">
+              No settings required. Drop this gateway inside a VPC to attach it.
+            </p>
+          )}
+          {CONFIG_FIELDS[serviceType].map((field) => {
+            if (
+              serviceType === 'vpce' &&
+              String(config.endpointType).startsWith('Gateway') &&
+              (field.key === 'azCount' || field.key === 'dataProcessedGb')
+            ) {
+              return null;
+            }
+
+            const value = config[field.key];
+
+            if (field.type === 'routes') {
+              return (
+                <RouteTableEditor
+                  key={field.key}
+                  routes={normalizeRoutes(value)}
+                  onChange={(routes) => onUpdateConfig(node.id, { routeTable: routes })}
+                />
+              );
+            }
 
             if (field.type === 'checkbox') {
               return (
@@ -157,7 +336,7 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
                   <input
                     type="checkbox"
                     checked={Boolean(value)}
-                    onChange={(event) => onUpdateConfig(node.id, { [field.key]: event.target.checked })}
+                    onChange={(event) => updateField(field.key, event.target.checked)}
                     className="h-4 w-4 accent-sky-500"
                   />
                 </label>
@@ -165,39 +344,64 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
             }
 
             if (field.type === 'select') {
+              const isAzField = isSubnet && field.key === 'az';
+              const currentAz = String(value ?? '');
+              const options = isAzField
+                ? currentAz && !azOptions.includes(currentAz)
+                  ? [currentAz, ...azOptions]
+                  : azOptions
+                : (field.options ?? []);
+
               return (
                 <label key={field.key} className="block">
                   <span className="mb-1 block text-[10px] text-slate-500">{field.label}</span>
                   <select
                     className={fieldClass}
-                    value={String(value ?? '')}
-                    onChange={(event) => onUpdateConfig(node.id, { [field.key]: event.target.value })}
+                    value={currentAz || String(value ?? '')}
+                    onChange={(event) => updateField(field.key, event.target.value)}
                   >
-                    {field.options?.map((option) => (
+                    {options.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
                     ))}
                   </select>
+                  {isAzField && currentAz && !azOptions.includes(currentAz) && (
+                    <span className="mt-1 block text-[10px] text-amber-400">
+                      AZ belongs to a different region than {region}.
+                    </span>
+                  )}
                 </label>
               );
             }
 
             return (
-              <label key={field.key} className="block">
-                <span className="mb-1 block text-[10px] text-slate-500">{field.label}</span>
-                <input
-                  className={fieldClass}
-                  type={field.type === 'number' ? 'number' : 'text'}
-                  step={field.step}
-                  value={value ?? ''}
-                  onChange={(event) =>
-                    onUpdateConfig(node.id, {
-                      [field.key]: field.type === 'number' ? Number(event.target.value) : event.target.value,
-                    })
-                  }
-                />
-              </label>
+              <div key={field.key}>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] text-slate-500">{field.label}</span>
+                  <input
+                    className={fieldClass}
+                    type={field.type === 'number' ? 'number' : 'text'}
+                    step={field.step}
+                    value={value ?? ''}
+                    onChange={(event) =>
+                      updateField(field.key, field.type === 'number' ? Number(event.target.value) : event.target.value)
+                    }
+                  />
+                </label>
+                {isSubnet && field.key === 'cidr' && subnetValidation && (
+                  <div className="mt-1 text-[10px]">
+                    <span className={subnetValidation.errors.length ? 'text-slate-400' : 'text-emerald-300/80'}>
+                      {subnetValidation.usable}
+                    </span>
+                    {subnetValidation.errors.map((error) => (
+                      <span key={error} className="mt-0.5 block text-red-400">
+                        ⚠ {error}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

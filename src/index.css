@@ -7,3 +7,12 @@ html, body, #root {
   background-color: #090d16;
   color: #f1f5f9;
 }
+
+/* Easier-to-grab container resize handles */
+.react-flow__resize-control.handle {
+  width: 12px !important;
+  height: 12px !important;
+}
+.react-flow__resize-control.line {
+  border-width: 2px !important;
+}

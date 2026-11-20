@@ -34,7 +34,7 @@ export default function InspectorPanel() {
   );
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-slate-800 bg-slate-950/90">
+    <aside className="flex w-[22rem] shrink-0 flex-col border-l border-slate-800 bg-slate-950/90">
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
           <SlidersHorizontal size={13} /> Inspector

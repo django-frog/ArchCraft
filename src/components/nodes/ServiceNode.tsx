@@ -77,7 +77,7 @@ const ServiceNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
           id={handle.id}
           type="source"
           position={handle.position}
-          className="!h-2.5 !w-2.5 !rounded-full !border-2 !border-slate-950 !bg-slate-500 transition-colors hover:!bg-sky-400"
+          className="!h-3 !w-3 !rounded-full !border-2 !border-slate-950 !bg-slate-500 transition-all hover:!h-3.5 hover:!w-3.5 hover:!bg-sky-400"
         />
       ))}
 

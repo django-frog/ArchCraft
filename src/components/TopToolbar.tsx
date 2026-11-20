@@ -97,23 +97,21 @@ export default function TopToolbar({ onOpenSecurityGroups, onOpenExport, onOpenA
           </span>
         </button>
 
-        <div className="flex flex-col items-end">
-          <div
-            className="text-[9px] text-slate-500"
-            title={prices ? `${prices.source} · ${prices.syncedAt}` : 'Built-in us-east-1 defaults'}
-          >
-            AWS Rates • Synced {formatSyncedAt(prices?.syncedAt)}
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5">
-            <CircleDollarSign size={15} className="text-emerald-400" />
-            <div className="leading-tight">
-              <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide text-emerald-500/80">
-                <Activity size={9} /> Estimated spend
-              </div>
-              <div className="flex items-baseline gap-2 font-mono text-xs font-semibold text-emerald-300">
-                ${monthlyCost.toFixed(2)}<span className="text-[9px] font-normal text-emerald-500/70">/mo</span>
-                <span className="text-[10px] font-normal text-slate-400">${(monthlyCost * 12).toFixed(2)}/yr</span>
-              </div>
+        <div
+          className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5"
+          title={prices ? `${prices.source} · ${prices.syncedAt}` : 'Built-in us-east-1 defaults'}
+        >
+          <CircleDollarSign size={15} className="text-emerald-400" />
+          <div className="leading-tight">
+            <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide text-emerald-500/80">
+              <Activity size={9} /> Estimated spend
+            </div>
+            <div className="flex items-baseline gap-2 font-mono text-xs font-semibold text-emerald-300">
+              ${monthlyCost.toFixed(2)}<span className="text-[9px] font-normal text-emerald-500/70">/mo</span>
+              <span className="text-[10px] font-normal text-slate-400">${(monthlyCost * 12).toFixed(2)}/yr</span>
+            </div>
+            <div className="mt-0.5 text-[9px] text-slate-500">
+              AWS Rates • Synced {formatSyncedAt(prices?.syncedAt)}
             </div>
           </div>
         </div>

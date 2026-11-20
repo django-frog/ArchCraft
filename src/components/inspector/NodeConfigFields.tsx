@@ -213,16 +213,16 @@ function RouteTableEditor({ routes, onChange }: RouteTableEditorProps) {
       </div>
       <div className="space-y-1.5">
         {routes.map((route, index) => (
-          <div key={index} className="flex items-center gap-1">
+          <div key={index} className="grid grid-cols-[minmax(0,1fr)_6.5rem_auto] items-center gap-1.5">
             <input
-              className={`${fieldClass} min-w-0 flex-1`}
+              className={`${fieldClass} min-w-0`}
               value={route.destination}
               placeholder="0.0.0.0/0"
               aria-label={`Route ${index + 1} destination CIDR`}
               onChange={(event) => updateRoute(index, { destination: event.target.value })}
             />
             <select
-              className={`${fieldClass} w-24 shrink-0`}
+              className={`${fieldClass} min-w-0`}
               value={route.target}
               aria-label={`Route ${index + 1} target`}
               onChange={(event) => updateRoute(index, { target: event.target.value })}
@@ -235,7 +235,7 @@ function RouteTableEditor({ routes, onChange }: RouteTableEditorProps) {
             </select>
             <button
               type="button"
-              className="shrink-0 rounded border border-slate-700 p-1 text-slate-400 hover:border-red-500 hover:text-red-400"
+              className="rounded border border-slate-700 p-1.5 text-slate-400 hover:border-red-500 hover:text-red-400"
               aria-label={`Remove route ${index + 1}`}
               onClick={() => onChange(routes.filter((_, i) => i !== index))}
             >

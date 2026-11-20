@@ -98,18 +98,32 @@ function getAllowedParentTypes(serviceType: AwsServiceType): AwsServiceType[] {
   return ['subnet', 'vpc']; // Resources prefer a Subnet, but may sit directly in a VPC
 }
 
-/** Innermost eligible container under a canvas point, excluding a dragged subtree. */
+function rectIntersectionArea(a: Rect, b: Rect): number {
+  const xOverlap = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const yOverlap = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return xOverlap * yOverlap;
+}
+
+/** Innermost eligible container under a canvas point (or overlapping rect), excluding a dragged subtree. */
 function findContainer(
   point: Point,
   nodes: AppNode[],
   excludeId?: string,
-  allowedTypes?: AwsServiceType[]
+  allowedTypes?: AwsServiceType[],
+  nodeRect?: Rect
 ): AppNode | undefined {
   const candidates = nodes.filter((node) => {
     if (!AWS_CATALOG[node.data.serviceType]?.isContainer) return false;
     if (allowedTypes && !allowedTypes.includes(node.data.serviceType)) return false;
     if (excludeId && (node.id === excludeId || isDescendantOf(node, excludeId, nodes))) return false;
-    return containsPoint(getNodeRect(node, nodes), point);
+    const rect = getNodeRect(node, nodes);
+    if (containsPoint(rect, point)) return true;
+    if (nodeRect) {
+      const overlap = rectIntersectionArea(rect, nodeRect);
+      const nodeArea = Math.max(1, nodeRect.width * nodeRect.height);
+      return overlap / nodeArea >= 0.35;
+    }
+    return false;
   });
 
   return candidates.sort((a, b) => {
@@ -172,7 +186,7 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
 
       const rect = getNodeRect(dragged, currentNodes);
       const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-      const target = findContainer(center, currentNodes, dragged.id, allowedTypes);
+      const target = findContainer(center, currentNodes, dragged.id, allowedTypes, rect);
 
       if ((target?.id ?? undefined) === dragged.parentId) return;
 

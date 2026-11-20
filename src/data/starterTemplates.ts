@@ -42,14 +42,14 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
     {
       id: 'cf-1',
       type: 'serviceNode',
-      position: { x: 40, y: 180 },
+      position: { x: 40, y: 260 },
       data: { label: 'Edge CDN', serviceType: 'cloudfront', config: { ...AWS_CATALOG.cloudfront.defaultConfig }, securityGroupIds: [] },
     },
     {
       id: 'vpc-main',
       type: 'containerNode',
-      position: { x: 300, y: 40 },
-      style: { width: 760, height: 520 },
+      position: { x: 300, y: 20 },
+      style: { width: 1040, height: 700 },
       data: { label: 'Production VPC', serviceType: 'vpc', config: { cidr: '10.0.0.0/16', natGateways: 1, dataProcessedGb: 150 }, securityGroupIds: [] },
     },
     {
@@ -57,8 +57,8 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'containerNode',
       parentId: 'vpc-main',
       extent: 'parent',
-      position: { x: 30, y: 70 },
-      style: { width: 220, height: 410 },
+      position: { x: 40, y: 90 },
+      style: { width: 340, height: 560 },
       data: {
         label: 'Public Subnet',
         serviceType: 'subnet',
@@ -77,8 +77,8 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'containerNode',
       parentId: 'vpc-main',
       extent: 'parent',
-      position: { x: 280, y: 70 },
-      style: { width: 450, height: 410 },
+      position: { x: 420, y: 90 },
+      style: { width: 580, height: 560 },
       data: {
         label: 'Private App & Data Subnet',
         serviceType: 'subnet',
@@ -98,7 +98,7 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'serviceNode',
       parentId: 'sub-pub',
       extent: 'parent',
-      position: { x: 10, y: 205 },
+      position: { x: 70, y: 360 },
       data: {
         label: 'Internet Gateway',
         serviceType: 'igw',
@@ -111,7 +111,7 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'serviceNode',
       parentId: 'sub-pub',
       extent: 'parent',
-      position: { x: 20, y: 80 },
+      position: { x: 70, y: 100 },
       data: {
         label: 'Web / Reverse Proxy',
         serviceType: 'ec2',
@@ -129,7 +129,7 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'serviceNode',
       parentId: 'sub-priv',
       extent: 'parent',
-      position: { x: 25, y: 80 },
+      position: { x: 40, y: 120 },
       data: {
         label: 'Core API Workers',
         serviceType: 'ec2',
@@ -147,7 +147,7 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'serviceNode',
       parentId: 'sub-priv',
       extent: 'parent',
-      position: { x: 245, y: 65 },
+      position: { x: 320, y: 70 },
       data: { label: 'Session & Query Cache', serviceType: 'elasticache', config: { ...AWS_CATALOG.elasticache.defaultConfig }, securityGroupIds: ['sg-db-isolated'] },
     },
     {
@@ -155,13 +155,13 @@ export const THREE_TIER_TEMPLATE: StarterTemplate = {
       type: 'serviceNode',
       parentId: 'sub-priv',
       extent: 'parent',
-      position: { x: 245, y: 235 },
+      position: { x: 320, y: 300 },
       data: { label: 'Primary PostgreSQL', serviceType: 'rds', config: { ...AWS_CATALOG.rds.defaultConfig }, securityGroupIds: ['sg-db-isolated'] },
     },
     {
       id: 's3-1',
       type: 'serviceNode',
-      position: { x: 1120, y: 200 },
+      position: { x: 1390, y: 260 },
       data: { label: 'Static Assets & Backups', serviceType: 's3', config: { ...AWS_CATALOG.s3.defaultConfig }, securityGroupIds: [] },
     },
   ],

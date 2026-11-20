@@ -133,8 +133,8 @@ export const useArchStore = create<ArchState>()(
           type: def.isContainer ? 'containerNode' : 'serviceNode',
           position,
           ...(parentId ? { parentId, extent: 'parent' as const } : {}),
-          ...(isVpc ? { style: { width: 640, height: 440 } } : {}),
-          ...(isSubnet ? { style: { width: 280, height: 320 } } : {}),
+          ...(isVpc ? { style: { width: 900, height: 620 } } : {}),
+          ...(isSubnet ? { style: { width: 360, height: 420 } } : {}),
           data: {
             label: def.name,
             serviceType,

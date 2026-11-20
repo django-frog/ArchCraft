@@ -216,7 +216,10 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
       const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
       ) {
         return;
       }

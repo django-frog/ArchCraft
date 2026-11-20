@@ -136,6 +136,30 @@ export function parseAndValidateProject(rawJson: string): ImportValidationResult
     };
   });
 
+  // React Flow renders parent nodes before children, so guarantee that ordering on import:
+  // VPCs first, then Subnets, then service nodes; ties broken by nesting depth.
+  const nodeById = new Map(sanitizedNodes.map((n) => [n.id, n]));
+  const getDepth = (node: AppNode): number => {
+    let depth = 0;
+    let parentId = node.parentId;
+    const visited = new Set<string>([node.id]);
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      depth += 1;
+      parentId = nodeById.get(parentId)?.parentId;
+    }
+    return depth;
+  };
+  const containerRank = (node: AppNode): number => {
+    if (node.data.serviceType === 'vpc') return 0;
+    if (node.data.serviceType === 'subnet') return 1;
+    return 2;
+  };
+  const orderedNodes = [...sanitizedNodes].sort((a, b) => {
+    const byRank = containerRank(a) - containerRank(b);
+    return byRank !== 0 ? byRank : getDepth(a) - getDepth(b);
+  });
+
   const sanitizedEdges: AppEdge[] = edges.filter(
     (e: AppEdge) => e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target)
   );
@@ -154,7 +178,7 @@ export function parseAndValidateProject(rawJson: string): ImportValidationResult
         region,
       },
       architecture: {
-        nodes: sanitizedNodes,
+        nodes: orderedNodes,
         edges: sanitizedEdges,
         securityGroups: Array.isArray(securityGroups) ? securityGroups : [],
       },

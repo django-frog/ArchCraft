@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint and type-check
+        run: npx oxlint && npx tsc --noEmit
+
       - name: Build production bundle
         run: npm run build
 

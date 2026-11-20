@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { AlertOctagon, CircleCheck, Minimize2, X } from 'lucide-react';
+import { AlertOctagon, CircleCheck, ExternalLink, Minimize2, X } from 'lucide-react';
 import AdvisorDrawer from './components/AdvisorDrawer';
 import CanvasBoard from './components/CanvasBoard';
 import ExportModal from './components/ExportModal';
@@ -148,6 +148,32 @@ export default function App() {
             >
               <X size={13} />
             </button>
+          </div>
+        )}
+
+        {!focusMode && (
+          <div className="fixed bottom-3 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700/70 bg-slate-950/75 px-3 py-1.5 text-[10px] text-slate-400 shadow-lg backdrop-blur">
+            <span>
+              Built by <span className="font-medium text-slate-200">Mohammad Hamdan</span>
+            </span>
+            <span className="text-slate-700">•</span>
+            <a
+              href="https://github.com/django-frog/ArchCraft"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 hover:underline"
+            >
+              GitHub <ExternalLink size={10} />
+            </a>
+            <span className="text-slate-700">•</span>
+            <a
+              href="https://www.linkedin.com/in/mohammad-hamdan-824963324/"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 hover:underline"
+            >
+              LinkedIn <ExternalLink size={10} />
+            </a>
           </div>
         )}
 

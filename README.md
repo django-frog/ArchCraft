@@ -1,32 +1,43 @@
-# React + TypeScript + Vite
+# AWS ArchCraft
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A browser-based AWS architecture designer with live cost estimates and Well-Architected linting. Design on a React Flow canvas, then export a lossless project file or a compressed share link — no backend required.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **AWS service catalog** — drag VPC, Subnet, EC2, RDS, Lambda, S3, and more onto the canvas with container-aware nesting.
+- **FinOps estimates** — per-node and total monthly/yearly cost calculations that respect the selected region.
+- **Well-Architected Advisor** — live lint findings (security, reliability, cost) with a score, per-node warning badges, and an inspector panel.
+- **Lossless project I/O** — export/import `.archcraft.json` with full topology, configs, and security groups. Import via file upload, drag-and-drop, or pasted JSON.
+- **Zero-backend sharing** — generate a compressed `#arch=` URL link that auto-loads the architecture on open.
+- **Documentation exports** — Markdown specification and Mermaid diagram output.
+- **Focus Mode** — hide all panels and canvas controls for clean architecture screenshots (press `Esc` to exit).
+- **Local persistence** — work is saved to `sessionStorage` automatically.
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open the local URL printed by Vite.
+
+### Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Type-check and build the production bundle into `dist/` |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run Oxlint |
+
+## Deployment
+
+The included GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and deploys to GitHub Pages on every push to `main`. After the first push, enable **Settings → Pages → Build and deployment → Source: GitHub Actions** in your repository. Vite is configured with `base: './'` so asset paths work on project Pages sites.
+
+## Author
+
+**Mohammad Hamdan**
+
+- GitHub repository: [django-frog/ArchCraft](https://github.com/django-frog/ArchCraft)
+- LinkedIn: [mohammad-hamdan-824963324](https://www.linkedin.com/in/mohammad-hamdan-824963324/)

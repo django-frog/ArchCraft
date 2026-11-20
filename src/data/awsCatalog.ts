@@ -1,36 +1,36 @@
-import type { AwsServiceType, ServiceDefinition } from '../types/architecture';
+import type {
+  AwsServiceType,
+  CostEstimate,
+  CostLineItem,
+  RdsEngineRates,
+  ServiceDefinition,
+} from '../types/architecture';
+import { BUILTIN_REGION_RATES } from './pricingData';
 
-export const AWS_REGIONS: Record<string, { name: string; multiplier: number }> = {
-  'us-east-1': { name: 'US East (N. Virginia)', multiplier: 1.0 },
-  'us-west-2': { name: 'US West (Oregon)', multiplier: 1.0 },
-  'eu-west-1': { name: 'Europe (Ireland)', multiplier: 1.08 },
-  'eu-central-1': { name: 'Europe (Frankfurt)', multiplier: 1.14 },
-  'ap-south-1': { name: 'Asia Pacific (Mumbai)', multiplier: 1.06 },
-  'ap-northeast-1': { name: 'Asia Pacific (Tokyo)', multiplier: 1.18 },
+export const AWS_REGIONS: Record<string, { name: string }> = {
+  'us-east-1': { name: 'US East (N. Virginia)' },
+  'us-west-2': { name: 'US West (Oregon)' },
+  'eu-west-1': { name: 'Europe (Ireland)' },
+  'eu-central-1': { name: 'Europe (Frankfurt)' },
+  'ap-south-1': { name: 'Asia Pacific (Mumbai)' },
+  'ap-northeast-1': { name: 'Asia Pacific (Tokyo)' },
 };
 
-const EC2_RATES: Record<string, number> = {
-  't3.micro': 0.0104,
-  't3.small': 0.0208,
-  't3.medium': 0.0416,
-  't3.large': 0.0832,
-  'm6i.large': 0.096,
-  'm6i.xlarge': 0.192,
-  'c6i.large': 0.085,
+const HOURS_PER_MONTH = 730;
+
+const estimate = (lineItems: CostLineItem[]): CostEstimate => ({
+  lineItems,
+  monthly: lineItems.reduce((sum, item) => sum + item.amount, 0),
+});
+
+const rateLabel = (rate: number): string => {
+  if (rate >= 0.01) return `$${rate.toFixed(4)}`;
+  if (rate >= 0.0001) return `$${rate.toFixed(6)}`;
+  return `$${rate.toPrecision(3)}`;
 };
 
-const RDS_RATES: Record<string, number> = {
-  'db.t4g.micro': 0.016,
-  'db.t4g.medium': 0.065,
-  'db.m6i.large': 0.178,
-  'db.r6g.large': 0.26,
-};
-
-const CACHE_RATES: Record<string, number> = {
-  'cache.t4g.micro': 0.016,
-  'cache.t4g.medium': 0.068,
-  'cache.r6g.large': 0.252,
-};
+const fallbackRate = (rate: number | undefined, fallback: number): number =>
+  typeof rate === 'number' && Number.isFinite(rate) ? rate : fallback;
 
 export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
   vpc: {
@@ -45,10 +45,21 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       natGateways: 1,
       dataProcessedGb: 100,
     },
-    calculateMonthlyCost: (cfg) => {
-      const natCount = Number(cfg.natGateways || 0);
-      const gb = Number(cfg.dataProcessedGb || 0);
-      return natCount * (0.045 * 730) + natCount * gb * 0.045;
+    calculateMonthlyCost: (cfg, rates) => {
+      const gateways = Math.max(0, Number(cfg.natGateways || 0));
+      const gb = Math.max(0, Number(cfg.dataProcessedGb || 0));
+      const hourly = fallbackRate(rates.vpc?.natGatewayHourly, BUILTIN_REGION_RATES.vpc.natGatewayHourly);
+      const perGb = fallbackRate(rates.vpc?.natGatewayDataGb, BUILTIN_REGION_RATES.vpc.natGatewayDataGb);
+      return estimate([
+        {
+          label: `${gateways} NAT Gateway${gateways === 1 ? '' : 's'} × ${HOURS_PER_MONTH} hrs × ${rateLabel(hourly)}/hr`,
+          amount: gateways * HOURS_PER_MONTH * hourly,
+        },
+        {
+          label: `NAT data processed (${gateways} × ${gb} GB × ${rateLabel(perGb)}/GB)`,
+          amount: gateways * gb * perGb,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.cidr} • ${cfg.natGateways || 0} NAT GW`,
   },
@@ -65,7 +76,7 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       cidr: '10.0.1.0/24',
       az: 'us-east-1a',
     },
-    calculateMonthlyCost: () => 0,
+    calculateMonthlyCost: () => estimate([{ label: 'Subnet (no AWS charge)', amount: 0 }]),
     getSpecSummary: (cfg) => `${cfg.tier} • ${cfg.cidr} (${cfg.az})`,
   },
 
@@ -80,11 +91,22 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       requestsMillions: 10,
       wafEnabled: false,
     },
-    calculateMonthlyCost: (cfg) => {
-      const gb = Math.max(0, Number(cfg.dataTransferOutGb || 0) - 1000); // 1TB free tier
-      const req = Math.max(0, Number(cfg.requestsMillions || 0) - 10);
-      const waf = cfg.wafEnabled ? 5 + 1 : 0;
-      return gb * 0.085 + req * 0.01 + waf;
+    calculateMonthlyCost: (cfg, rates) => {
+      const gb = Math.max(0, Number(cfg.dataTransferOutGb || 0) - 1000); // 1 TB free tier
+      const requests = Math.max(0, Number(cfg.requestsMillions || 0) - 10);
+      const transferRate = fallbackRate(rates.cloudfront?.dataTransferOutGb, BUILTIN_REGION_RATES.cloudfront.dataTransferOutGb);
+      const requestRate = fallbackRate(rates.cloudfront?.requests, BUILTIN_REGION_RATES.cloudfront.requests);
+      return estimate([
+        {
+          label: `Data transfer out (${gb} GB after 1 TB free tier × ${rateLabel(transferRate)}/GB)`,
+          amount: gb * transferRate,
+        },
+        {
+          label: `HTTPS requests (${requests.toFixed(2)}M after 10M free tier × ${rateLabel(requestRate)}/1M)`,
+          amount: requests * requestRate,
+        },
+        { label: 'AWS WAF (fixed estimate)', amount: cfg.wafEnabled ? 6 : 0 },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.dataTransferOutGb} GB out • ${cfg.requestsMillions}M req`,
   },
@@ -101,9 +123,19 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       count: 2,
       os: 'Linux',
     },
-    calculateMonthlyCost: (cfg) => {
-      const rate = EC2_RATES[cfg.instanceType] ?? 0.0416;
-      return rate * 730 * Number(cfg.count || 1);
+    calculateMonthlyCost: (cfg, rates) => {
+      const instanceType = String(cfg.instanceType || 't3.medium');
+      const count = Math.max(0, Number(cfg.count || 1));
+      const rate = fallbackRate(
+        rates.ec2?.[instanceType],
+        BUILTIN_REGION_RATES.ec2[instanceType] ?? BUILTIN_REGION_RATES.ec2['t3.medium']
+      );
+      return estimate([
+        {
+          label: `${count}× ${instanceType} (Linux Shared) × ${HOURS_PER_MONTH} hrs × ${rateLabel(rate)}/hr`,
+          amount: count * HOURS_PER_MONTH * rate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.count}x ${cfg.instanceType} (${cfg.os})`,
   },
@@ -120,12 +152,24 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       requestsMillions: 5,
       avgDurationMs: 120,
     },
-    calculateMonthlyCost: (cfg) => {
-      const reqs = Number(cfg.requestsMillions || 0) * 1_000_000;
-      const billableReqs = Math.max(0, reqs - 1_000_000);
-      const gbSeconds = reqs * (Number(cfg.avgDurationMs || 0) / 1000) * (Number(cfg.memoryMb || 128) / 1024);
-      const billableGbSec = Math.max(0, gbSeconds - 400_000);
-      return (billableReqs / 1_000_000) * 0.2 + billableGbSec * 0.0000166667;
+    calculateMonthlyCost: (cfg, rates) => {
+      const requests = Math.max(0, Number(cfg.requestsMillions || 0)) * 1_000_000;
+      const billableRequests = Math.max(0, requests - 1_000_000);
+      const memoryGb = Math.max(0.128, Number(cfg.memoryMb || 128) / 1024);
+      const gbSeconds = requests * (Number(cfg.avgDurationMs || 0) / 1000) * memoryGb;
+      const billableGbSeconds = Math.max(0, gbSeconds - 400_000);
+      const requestRate = fallbackRate(rates.lambda?.requests, BUILTIN_REGION_RATES.lambda.requests);
+      const durationRate = fallbackRate(rates.lambda?.gbSeconds, BUILTIN_REGION_RATES.lambda.gbSeconds);
+      return estimate([
+        {
+          label: `Requests (${(billableRequests / 1_000_000).toFixed(2)}M after 1M free tier × ${rateLabel(requestRate)}/1M)`,
+          amount: (billableRequests / 1_000_000) * requestRate,
+        },
+        {
+          label: `Compute (${Math.round(billableGbSeconds).toLocaleString('en-US')} GB-s after 400K free GB-s × ${rateLabel(durationRate)}/GB-s)`,
+          amount: billableGbSeconds * durationRate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.memoryMb}MB • ${cfg.requestsMillions}M req/mo`,
   },
@@ -143,11 +187,31 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       multiAz: true,
       storageGb: 100,
     },
-    calculateMonthlyCost: (cfg) => {
-      const rate = RDS_RATES[cfg.instanceClass] ?? 0.065;
-      const mult = cfg.multiAz ? 2 : 1;
-      const storageRate = cfg.multiAz ? 0.23 : 0.115;
-      return rate * 730 * mult + Number(cfg.storageGb || 20) * storageRate;
+    calculateMonthlyCost: (cfg, rates) => {
+      const engine = String(cfg.engine || 'PostgreSQL').toLowerCase();
+      const engineKey: 'postgresql' | 'mysql' =
+        engine === 'mysql' || engine === 'mariadb' ? 'mysql' : 'postgresql';
+      const deployment = cfg.multiAz ? 'multiAz' : 'singleAz';
+      const instanceClass = String(cfg.instanceClass || 'db.t4g.medium');
+      const defaults = BUILTIN_REGION_RATES.rds.engines[engineKey];
+      const engineRates: RdsEngineRates = rates.rds?.engines?.[engineKey] ?? defaults;
+      const instanceRate = fallbackRate(
+        engineRates[deployment]?.[instanceClass],
+        defaults[deployment][instanceClass] ?? defaults.singleAz['db.t4g.medium']
+      );
+      const storageRate = fallbackRate(engineRates.storage?.[deployment], defaults.storage[deployment]);
+      const storageGb = Math.max(0, Number(cfg.storageGb || 20));
+
+      return estimate([
+        {
+          label: `${instanceClass} ${deployment} (${engineKey}) × ${HOURS_PER_MONTH} hrs × ${rateLabel(instanceRate)}/hr`,
+          amount: instanceRate * HOURS_PER_MONTH,
+        },
+        {
+          label: `${storageGb} GB gp3 storage (${deployment}) × ${rateLabel(storageRate)}/GB-mo`,
+          amount: storageGb * storageRate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) =>
       `${cfg.engine} • ${cfg.instanceClass}${cfg.multiAz ? ' (Multi-AZ)' : ''} • ${cfg.storageGb}GB`,
@@ -165,11 +229,27 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       readRequestsMillions: 25,
       storageGb: 25,
     },
-    calculateMonthlyCost: (cfg) => {
-      const billableStorage = Math.max(0, Number(cfg.storageGb || 0) - 25);
-      const wruCost = Number(cfg.writeRequestsMillions || 0) * 0.625;
-      const rruCost = Number(cfg.readRequestsMillions || 0) * 0.125;
-      return billableStorage * 0.25 + wruCost + rruCost;
+    calculateMonthlyCost: (cfg, rates) => {
+      const writes = Math.max(0, Number(cfg.writeRequestsMillions || 0));
+      const reads = Math.max(0, Number(cfg.readRequestsMillions || 0));
+      const storage = Math.max(0, Number(cfg.storageGb || 0) - 25); // first 25 GB free
+      const wruRate = fallbackRate(rates.dynamodb?.wru, BUILTIN_REGION_RATES.dynamodb.wru);
+      const rruRate = fallbackRate(rates.dynamodb?.rru, BUILTIN_REGION_RATES.dynamodb.rru);
+      const storageRate = fallbackRate(rates.dynamodb?.storageGb, BUILTIN_REGION_RATES.dynamodb.storageGb);
+      return estimate([
+        {
+          label: `Write request units (${writes.toFixed(2)}M × ${rateLabel(wruRate)}/1M)`,
+          amount: writes * wruRate,
+        },
+        {
+          label: `Read request units (${reads.toFixed(2)}M × ${rateLabel(rruRate)}/1M)`,
+          amount: reads * rruRate,
+        },
+        {
+          label: `Storage (${storage} GB after 25 GB free tier × ${rateLabel(storageRate)}/GB-mo)`,
+          amount: storage * storageRate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.capacityMode} • ${cfg.readRequestsMillions}M RRU / ${cfg.writeRequestsMillions}M WRU`,
   },
@@ -186,9 +266,19 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       nodeType: 'cache.t4g.micro',
       numNodes: 2,
     },
-    calculateMonthlyCost: (cfg) => {
-      const rate = CACHE_RATES[cfg.nodeType] ?? 0.016;
-      return rate * 730 * Number(cfg.numNodes || 1);
+    calculateMonthlyCost: (cfg, rates) => {
+      const nodeType = String(cfg.nodeType || 'cache.t4g.micro');
+      const nodes = Math.max(0, Number(cfg.numNodes || 1));
+      const rate = fallbackRate(
+        rates.elasticache?.[nodeType],
+        BUILTIN_REGION_RATES.elasticache[nodeType] ?? BUILTIN_REGION_RATES.elasticache['cache.t4g.micro']
+      );
+      return estimate([
+        {
+          label: `${nodes}× ${nodeType} × ${HOURS_PER_MONTH} hrs × ${rateLabel(rate)}/hr`,
+          amount: nodes * HOURS_PER_MONTH * rate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.engine} • ${cfg.numNodes}x ${cfg.nodeType}`,
   },
@@ -204,10 +294,21 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       sizeGb: 100,
       iops: 3000,
     },
-    calculateMonthlyCost: (cfg) => {
-      const base = Number(cfg.sizeGb || 0) * 0.08;
-      const extraIops = Math.max(0, Number(cfg.iops || 3000) - 3000) * 0.005;
-      return base + extraIops;
+    calculateMonthlyCost: (cfg, rates) => {
+      const sizeGb = Math.max(0, Number(cfg.sizeGb || 0));
+      const extraIops = Math.max(0, Number(cfg.iops || 3000) - 3000);
+      const gbRate = fallbackRate(rates.ebs?.gp3Gb, BUILTIN_REGION_RATES.ebs.gp3Gb);
+      const iopsRate = fallbackRate(rates.ebs?.gp3Iops, BUILTIN_REGION_RATES.ebs.gp3Iops);
+      return estimate([
+        {
+          label: `gp3 storage (${sizeGb} GB × ${rateLabel(gbRate)}/GB-mo)`,
+          amount: sizeGb * gbRate,
+        },
+        {
+          label: `Provisioned IOPS (${extraIops} above 3,000 free × ${rateLabel(iopsRate)}/IOPS-mo)`,
+          amount: extraIops * iopsRate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.volumeType.toUpperCase()} • ${cfg.sizeGb} GB (${cfg.iops} IOPS)`,
   },
@@ -223,9 +324,26 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
       storageGb: 500,
       putRequestsThousands: 100,
     },
-    calculateMonthlyCost: (cfg) => {
-      const rate = cfg.storageClass === 'Standard-IA' ? 0.0125 : 0.023;
-      return Number(cfg.storageGb || 0) * rate + (Number(cfg.putRequestsThousands || 0) / 1000) * 0.005;
+    calculateMonthlyCost: (cfg, rates) => {
+      const storageClass = String(cfg.storageClass || 'Standard');
+      const isIa = storageClass === 'Standard-IA';
+      const storageRate = fallbackRate(
+        isIa ? rates.s3?.standardIa : rates.s3?.standard,
+        isIa ? BUILTIN_REGION_RATES.s3.standardIa : BUILTIN_REGION_RATES.s3.standard
+      );
+      const requestRate = fallbackRate(rates.s3?.putRequests, BUILTIN_REGION_RATES.s3.putRequests);
+      const storageGb = Math.max(0, Number(cfg.storageGb || 0));
+      const putThousands = Math.max(0, Number(cfg.putRequestsThousands || 0));
+      return estimate([
+        {
+          label: `${storageClass} storage (${storageGb} GB × ${rateLabel(storageRate)}/GB-mo)`,
+          amount: storageGb * storageRate,
+        },
+        {
+          label: `PUT/COPY/POST requests (${putThousands}K × ${rateLabel(requestRate)}/1K)`,
+          amount: putThousands * requestRate,
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.storageClass} • ${cfg.storageGb} GB`,
   },
@@ -242,8 +360,13 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
     },
     calculateMonthlyCost: (cfg) => {
       const billable = Math.max(0, Number(cfg.requestsMillions || 0) - 1);
-      const rate = cfg.queueType === 'FIFO' ? 0.5 : 0.4;
-      return billable * rate;
+      const isFifo = cfg.queueType === 'FIFO';
+      return estimate([
+        {
+          label: `${cfg.queueType} queue requests (${billable.toFixed(2)}M after 1M free tier × $${(isFifo ? 0.5 : 0.4).toFixed(2)}/1M)`,
+          amount: billable * (isFifo ? 0.5 : 0.4),
+        },
+      ]);
     },
     getSpecSummary: (cfg) => `${cfg.queueType} Queue • ${cfg.requestsMillions}M req/mo`,
   },

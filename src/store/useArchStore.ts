@@ -12,11 +12,13 @@ import {
 import type {
   AwsNodeData,
   AwsEdgeData,
+  AwsPricesFile,
   AwsServiceType,
   SecurityGroup,
   SecurityRule,
 } from '../types/architecture';
-import { AWS_CATALOG, AWS_REGIONS } from '../data/awsCatalog';
+import { AWS_CATALOG } from '../data/awsCatalog';
+import { getRegionRates, loadAwsPrices } from '../data/pricingData';
 import { DEFAULT_SGS, THREE_TIER_TEMPLATE, SERVERLESS_EVENT_TEMPLATE } from '../data/starterTemplates';
 import type { ArchCraftProjectFile } from '../utils/projectSerializer';
 
@@ -31,7 +33,10 @@ interface ArchState {
   securityGroups: SecurityGroup[];
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  prices: AwsPricesFile | null;
+  pricingStatus: 'loading' | 'ready' | 'fallback';
 
+  initializePricing: () => Promise<void>;
   setProjectName: (name: string) => void;
   setRegion: (region: string) => void;
   setSelectedNode: (id: string | null) => void;
@@ -70,6 +75,14 @@ export const useArchStore = create<ArchState>()(
       securityGroups: DEFAULT_SGS,
       selectedNodeId: null,
       selectedEdgeId: null,
+      prices: null,
+      pricingStatus: 'loading',
+
+      initializePricing: async () => {
+        if (get().pricingStatus !== 'loading') return;
+        const prices = await loadAwsPrices();
+        set({ prices, pricingStatus: prices ? 'ready' : 'fallback' });
+      },
 
       setProjectName: (projectName) => set({ projectName }),
       setRegion: (region) => set({ region }),
@@ -266,17 +279,27 @@ export const useArchStore = create<ArchState>()(
         }),
 
       getTotalMonthlyCost: () => {
-        const { nodes, region } = get();
-        const mult = AWS_REGIONS[region]?.multiplier ?? 1.0;
+        const { nodes, region, prices } = get();
+        const rates = getRegionRates(region, prices);
         return nodes.reduce((sum, node) => {
           const def = AWS_CATALOG[node.data.serviceType];
-          return sum + def.calculateMonthlyCost(node.data.config) * mult;
+          return sum + def.calculateMonthlyCost(node.data.config, rates).monthly;
         }, 0);
       },
     }),
     {
       name: 'aws-archcraft-session-v1',
       storage: createJSONStorage(() => sessionStorage),
+      // Pricing is reloaded from the synced file on every startup; never persist it.
+      partialize: (state) => ({
+        projectName: state.projectName,
+        region: state.region,
+        nodes: state.nodes,
+        edges: state.edges,
+        securityGroups: state.securityGroups,
+        selectedNodeId: state.selectedNodeId,
+        selectedEdgeId: state.selectedEdgeId,
+      }),
     }
   )
 );

@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Settings2 } from 'lucide-react';
 import { AWS_CATALOG } from '../../data/awsCatalog';
-import type { AppNode } from '../../store/useArchStore';
+import { getRegionRates } from '../../data/pricingData';
+import { useArchStore, type AppNode } from '../../store/useArchStore';
 import type { AwsServiceType } from '../../types/architecture';
 
 type FieldType = 'text' | 'number' | 'select' | 'checkbox';
@@ -39,7 +41,16 @@ const CONFIG_FIELDS: Record<AwsServiceType, ConfigField[]> = {
       key: 'instanceType',
       label: 'Instance Type',
       type: 'select',
-      options: ['t3.micro', 't3.small', 't3.medium', 't3.large', 'm6i.large', 'm6i.xlarge', 'c6i.large'],
+      options: [
+        't3.micro',
+        't3.small',
+        't3.medium',
+        't3.large',
+        't4g.medium',
+        'm6i.large',
+        'm6i.xlarge',
+        'c6i.large',
+      ],
     },
     { key: 'count', label: 'Instance Count', type: 'number', step: 1 },
     { key: 'os', label: 'Operating System', type: 'select', options: ['Linux', 'Windows'] },
@@ -102,6 +113,14 @@ interface NodeConfigFieldsProps {
 }
 
 export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }: NodeConfigFieldsProps) {
+  const region = useArchStore((s) => s.region);
+  const prices = useArchStore((s) => s.prices);
+  const rates = useMemo(() => getRegionRates(region, prices), [region, prices]);
+  const estimate = useMemo(
+    () => AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config, rates),
+    [node, rates]
+  );
+
   return (
     <>
       <div>
@@ -181,6 +200,26 @@ export default function NodeConfigFields({ node, onUpdateConfig, onUpdateLabel }
               </label>
             );
           })}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          AWS Billing Breakdown ({region})
+        </div>
+        <div className="space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px]">
+          {estimate.lineItems.map((item, index) => (
+            <div key={index} className="flex items-start justify-between gap-3 text-slate-400">
+              <span className="min-w-0 leading-snug" title={item.label}>
+                {item.label}
+              </span>
+              <span className="shrink-0 font-mono text-emerald-300">${item.amount.toFixed(2)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between border-t border-emerald-500/20 pt-2 font-semibold text-emerald-300">
+            <span>Monthly total</span>
+            <span className="font-mono">${estimate.monthly.toFixed(2)}</span>
+          </div>
         </div>
       </div>
     </>

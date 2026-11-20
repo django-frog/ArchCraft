@@ -1,6 +1,7 @@
 import type { AppNode, AppEdge } from '../store/useArchStore';
 import { AWS_CATALOG, AWS_REGIONS } from '../data/awsCatalog';
-import type { SecurityGroup } from '../types/architecture';
+import { formatSyncedAt, getRegionRates } from '../data/pricingData';
+import type { AwsPricesFile, SecurityGroup } from '../types/architecture';
 import { runArchitectureLinter } from './architectureLinter';
 
 const escapeCell = (value: string) => value.replace(/\|/g, '\\|').replace(/\n/g, ' ');
@@ -58,9 +59,11 @@ export function generateMarkdownSpec(params: {
   nodes: AppNode[];
   edges: AppEdge[];
   securityGroups: SecurityGroup[];
+  prices: AwsPricesFile | null;
 }): string {
-  const { projectName, region, nodes, edges, securityGroups } = params;
-  const regionInfo = AWS_REGIONS[region] || { name: region, multiplier: 1 };
+  const { projectName, region, nodes, edges, securityGroups, prices } = params;
+  const regionInfo = AWS_REGIONS[region] || { name: region };
+  const rates = getRegionRates(region, prices);
   const mermaid = generateMermaidDiagram(nodes, edges);
   const findings = runArchitectureLinter(nodes, edges, securityGroups);
   const counts = findings.reduce(
@@ -70,14 +73,22 @@ export function generateMarkdownSpec(params: {
   const score = Math.max(0, Math.min(100, 100 - counts.critical * 20 - counts.warning * 8 - counts.info * 2));
 
   let totalMonthly = 0;
+  const itemizedSections: string[] = [];
   const bomRows = nodes.map((node) => {
     const def = AWS_CATALOG[node.data.serviceType];
-    const cost = def.calculateMonthlyCost(node.data.config) * regionInfo.multiplier;
-    totalMonthly += cost;
+    const estimate = def.calculateMonthlyCost(node.data.config, rates);
+    totalMonthly += estimate.monthly;
     const parent = nodes.find((p) => p.id === node.parentId);
     const placement = parent ? parent.data.label : 'Global / Edge';
     const sgs = node.data.securityGroupIds?.length ? node.data.securityGroupIds.join(', ') : '—';
-    return `| **${node.data.label}** | ${def.shortName} | ${placement} | ${def.getSpecSummary(node.data.config)} | ${sgs} | $${cost.toFixed(2)} |`;
+    itemizedSections.push(
+      [
+        `#### ${node.data.label}`,
+        ...estimate.lineItems.map((item) => `- ${escapeCell(item.label)} — $${item.amount.toFixed(2)}`),
+        `- **Subtotal:** $${estimate.monthly.toFixed(2)}`,
+      ].join('\n')
+    );
+    return `| **${node.data.label}** | ${def.shortName} | ${placement} | ${def.getSpecSummary(node.data.config)} | ${sgs} | $${estimate.monthly.toFixed(2)} |`;
   });
 
   const sgSections = securityGroups
@@ -99,6 +110,7 @@ export function generateMarkdownSpec(params: {
     '',
     `- **Target Region:** \`${region}\` (${regionInfo.name})`,
     `- **Estimated Monthly Cost:** **$${totalMonthly.toFixed(2)} / mo** ($${(totalMonthly * 12).toFixed(2)} / yr)`,
+    `- **AWS Rates • Synced ${formatSyncedAt(prices?.syncedAt)}**`,
     `- **Generated:** ${new Date().toISOString().split('T')[0]}`,
     '',
     '## 1. Architecture Topology',
@@ -114,6 +126,9 @@ export function generateMarkdownSpec(params: {
     ...bomRows,
     `| **TOTAL** | | | | | **$${totalMonthly.toFixed(2)}** |`,
     '',
+    ...(itemizedSections.length
+      ? ['### Itemized AWS Billing Breakdown', '', ...itemizedSections, '']
+      : []),
     '## 3. Security Groups & Firewall Matrix',
     '',
     sgSections,

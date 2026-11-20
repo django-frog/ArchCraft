@@ -18,12 +18,19 @@ interface HashBanner {
 
 export default function App() {
   const importProject = useArchStore((s) => s.importProject);
+  const initializePricing = useArchStore((s) => s.initializePricing);
   const [securityGroupsOpen, setSecurityGroupsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [hashBanner, setHashBanner] = useState<HashBanner | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [exitPillVisible, setExitPillVisible] = useState(true);
+
+  // Load the weekly synced AWS rate file at startup. Built-in us-east-1 rates
+  // remain active if the fetch fails (offline / static host without the file).
+  useEffect(() => {
+    void initializePricing();
+  }, [initializePricing]);
 
   // Load a shared architecture from the URL hash on mount and on later hash changes.
   useEffect(() => {

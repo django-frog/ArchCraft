@@ -20,6 +20,7 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
   const nodes = useArchStore((s) => s.nodes);
   const edges = useArchStore((s) => s.edges);
   const securityGroups = useArchStore((s) => s.securityGroups);
+  const prices = useArchStore((s) => s.prices);
 
   const projectJson = useMemo(
     () =>
@@ -31,8 +32,8 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
     [projectName, region, nodes, edges, securityGroups]
   );
   const markdown = useMemo(
-    () => generateMarkdownSpec({ projectName, region, nodes, edges, securityGroups }),
-    [projectName, region, nodes, edges, securityGroups]
+    () => generateMarkdownSpec({ projectName, region, nodes, edges, securityGroups, prices }),
+    [projectName, region, nodes, edges, securityGroups, prices]
   );
   const mermaid = useMemo(() => generateMermaidDiagram(nodes, edges), [nodes, edges]);
 

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import {
   Cloud,
@@ -11,7 +11,8 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import { AWS_CATALOG, AWS_REGIONS } from '../../data/awsCatalog';
+import { AWS_CATALOG } from '../../data/awsCatalog';
+import { getRegionRates } from '../../data/pricingData';
 import { useArchitectureLint } from '../../hooks/useArchitectureLint';
 import { type AppNode, useArchStore } from '../../store/useArchStore';
 import type { AwsServiceType } from '../../types/architecture';
@@ -40,6 +41,7 @@ const HANDLES = [
 
 const ServiceNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
   const region = useArchStore((s) => s.region);
+  const prices = useArchStore((s) => s.prices);
   const securityGroups = useArchStore((s) => s.securityGroups);
   const updateNodeLabel = useArchStore((s) => s.updateNodeLabel);
   const { findings } = useArchitectureLint();
@@ -47,8 +49,8 @@ const ServiceNode = memo(({ id, data, selected }: NodeProps<AppNode>) => {
 
   const def = AWS_CATALOG[data.serviceType];
   const Icon = SERVICE_ICONS[data.serviceType];
-  const multiplier = AWS_REGIONS[region]?.multiplier ?? 1;
-  const monthlyCost = def.calculateMonthlyCost(data.config) * multiplier;
+  const rates = useMemo(() => getRegionRates(region, prices), [region, prices]);
+  const monthlyCost = def.calculateMonthlyCost(data.config, rates).monthly;
   const attachedGroups = (data.securityGroupIds || [])
     .map((sgId) => securityGroups.find((sg) => sg.id === sgId)?.name || sgId)
     .slice(0, 3);

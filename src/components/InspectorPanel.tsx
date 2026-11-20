@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { CircleDollarSign, Settings2, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
-import { AWS_CATALOG, AWS_REGIONS } from '../data/awsCatalog';
+import { AWS_CATALOG } from '../data/awsCatalog';
+import { getRegionRates } from '../data/pricingData';
 import { useArchitectureLint } from '../hooks/useArchitectureLint';
 import { useArchStore } from '../store/useArchStore';
 import EdgeInspector from './inspector/EdgeInspector';
@@ -12,6 +14,7 @@ export default function InspectorPanel() {
   const nodes = useArchStore((s) => s.nodes);
   const edges = useArchStore((s) => s.edges);
   const region = useArchStore((s) => s.region);
+  const prices = useArchStore((s) => s.prices);
   const securityGroups = useArchStore((s) => s.securityGroups);
   const updateNodeConfig = useArchStore((s) => s.updateNodeConfig);
   const updateNodeLabel = useArchStore((s) => s.updateNodeLabel);
@@ -24,7 +27,11 @@ export default function InspectorPanel() {
   const node = nodes.find((candidate) => candidate.id === selectedNodeId);
   const nodeFindings = node ? findings.filter((finding) => finding.targetId === node.id) : [];
   const edge = edges.find((candidate) => candidate.id === selectedEdgeId);
-  const multiplier = AWS_REGIONS[region]?.multiplier ?? 1;
+  const rates = useMemo(() => getRegionRates(region, prices), [region, prices]);
+  const estimate = useMemo(
+    () => (node ? AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config, rates) : null),
+    [node, rates]
+  );
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-slate-800 bg-slate-950/90">
@@ -104,25 +111,21 @@ export default function InspectorPanel() {
               <CircleDollarSign size={12} /> Cost Breakdown
             </div>
             <div className="space-y-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px]">
-              <div className="flex justify-between text-slate-400">
-                <span>Base (us-east-1)</span>
-                <span className="font-mono">${AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Region multiplier ({region})</span>
-                <span className="font-mono">×{multiplier.toFixed(2)}</span>
-              </div>
+              {estimate?.lineItems.map((item, index) => (
+                <div key={index} className="flex justify-between gap-3 text-slate-400">
+                  <span className="min-w-0 truncate" title={item.label}>
+                    {item.label}
+                  </span>
+                  <span className="shrink-0 font-mono">${item.amount.toFixed(2)}</span>
+                </div>
+              ))}
               <div className="flex justify-between border-t border-emerald-500/20 pt-2 font-semibold text-emerald-300">
-                <span>Monthly</span>
-                <span className="font-mono">
-                  ${(AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config) * multiplier).toFixed(2)}
-                </span>
+                <span>Monthly ({region})</span>
+                <span className="font-mono">${(estimate?.monthly ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-emerald-400/80">
                 <span>Annual</span>
-                <span className="font-mono">
-                  ${(AWS_CATALOG[node.data.serviceType].calculateMonthlyCost(node.data.config) * multiplier * 12).toFixed(2)}
-                </span>
+                <span className="font-mono">${((estimate?.monthly ?? 0) * 12).toFixed(2)}</span>
               </div>
             </div>
           </div>

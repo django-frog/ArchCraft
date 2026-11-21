@@ -1,0 +1,567 @@
+{
+  "$schema": "aws-archcraft-project",
+  "schemaVersion": "1.0.0",
+  "exportedAt": "2026-01-15T00:00:00.000Z",
+  "metadata": {
+    "projectName": "Multi-AZ SaaS Architecture",
+    "region": "us-east-1"
+  },
+  "architecture": {
+    "nodes": [
+      {
+        "id": "cloudfront-edge",
+        "type": "serviceNode",
+        "position": { "x": 40, "y": 300 },
+        "data": {
+          "label": "Global CDN & WAF",
+          "serviceType": "cloudfront",
+          "config": { "dataTransferOutGb": 2000, "requestsMillions": 50, "wafEnabled": true },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "vpc-prod",
+        "type": "containerNode",
+        "position": { "x": 320, "y": 20 },
+        "width": 1080,
+        "height": 780,
+        "style": { "width": 1080, "height": 780 },
+        "data": {
+          "label": "SaaS Production VPC",
+          "serviceType": "vpc",
+          "config": { "cidr": "10.0.0.0/16", "natGateways": 2, "dataProcessedGb": 250 },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-public-a",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 40, "y": 70 },
+        "width": 300,
+        "height": 300,
+        "style": { "width": 300, "height": 300 },
+        "data": {
+          "label": "Public AZ A",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Public",
+            "cidr": "10.0.1.0/24",
+            "az": "us-east-1a",
+            "mapPublicIpOnLaunch": true,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "igw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-public-b",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 360, "y": 70 },
+        "width": 300,
+        "height": 300,
+        "style": { "width": 300, "height": 300 },
+        "data": {
+          "label": "Public AZ B",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Public",
+            "cidr": "10.0.2.0/24",
+            "az": "us-east-1b",
+            "mapPublicIpOnLaunch": true,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "igw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-app-a",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 40, "y": 400 },
+        "width": 300,
+        "height": 360,
+        "style": { "width": 300, "height": 360 },
+        "data": {
+          "label": "Private App AZ A",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Private",
+            "cidr": "10.0.11.0/24",
+            "az": "us-east-1a",
+            "mapPublicIpOnLaunch": false,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "nat-gw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-app-b",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 360, "y": 400 },
+        "width": 300,
+        "height": 360,
+        "style": { "width": 300, "height": 360 },
+        "data": {
+          "label": "Private App AZ B",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Private",
+            "cidr": "10.0.12.0/24",
+            "az": "us-east-1b",
+            "mapPublicIpOnLaunch": false,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "nat-gw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-data-a",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 700, "y": 70 },
+        "width": 340,
+        "height": 360,
+        "style": { "width": 340, "height": 360 },
+        "data": {
+          "label": "Private Data AZ A",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Private",
+            "cidr": "10.0.21.0/24",
+            "az": "us-east-1a",
+            "mapPublicIpOnLaunch": false,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "nat-gw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "sub-data-b",
+        "type": "containerNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 700, "y": 400 },
+        "width": 340,
+        "height": 360,
+        "style": { "width": 340, "height": 360 },
+        "data": {
+          "label": "Private Data AZ B",
+          "serviceType": "subnet",
+          "config": {
+            "tier": "Private",
+            "cidr": "10.0.22.0/24",
+            "az": "us-east-1b",
+            "mapPublicIpOnLaunch": false,
+            "routeTable": [
+              { "destination": "10.0.0.0/16", "target": "local" },
+              { "destination": "0.0.0.0/0", "target": "nat-gw" }
+            ]
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "igw-main",
+        "type": "serviceNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 420, "y": 170 },
+        "data": {
+          "label": "Internet Gateway",
+          "serviceType": "igw",
+          "config": {},
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "alb-main",
+        "type": "serviceNode",
+        "parentId": "sub-public-a",
+        "extent": "parent",
+        "position": { "x": 45, "y": 110 },
+        "data": {
+          "label": "Public Application Load Balancer",
+          "serviceType": "alb",
+          "config": { "scheme": "internet-facing", "lcuEstimate": 6, "dataProcessedGb": 600 },
+          "securityGroupIds": ["sg-alb"]
+        }
+      },
+      {
+        "id": "ec2-app-a",
+        "type": "serviceNode",
+        "parentId": "sub-app-a",
+        "extent": "parent",
+        "position": { "x": 40, "y": 90 },
+        "data": {
+          "label": "Tenant API AZ A",
+          "serviceType": "ec2",
+          "config": {
+            "instanceType": "t3.large",
+            "architecture": "x86_64",
+            "purchasingOption": "On-Demand",
+            "count": 2,
+            "os": "Linux",
+            "rootVolumeGb": 50,
+            "internetEgressGb": 120
+          },
+          "securityGroupIds": ["sg-app"]
+        }
+      },
+      {
+        "id": "ec2-app-b",
+        "type": "serviceNode",
+        "parentId": "sub-app-b",
+        "extent": "parent",
+        "position": { "x": 40, "y": 90 },
+        "data": {
+          "label": "Tenant API AZ B",
+          "serviceType": "ec2",
+          "config": {
+            "instanceType": "t3.large",
+            "architecture": "x86_64",
+            "purchasingOption": "On-Demand",
+            "count": 2,
+            "os": "Linux",
+            "rootVolumeGb": 50,
+            "internetEgressGb": 120
+          },
+          "securityGroupIds": ["sg-app"]
+        }
+      },
+      {
+        "id": "rds-main",
+        "type": "serviceNode",
+        "parentId": "sub-data-a",
+        "extent": "parent",
+        "position": { "x": 50, "y": 90 },
+        "data": {
+          "label": "Multi-AZ Tenant Database",
+          "serviceType": "rds",
+          "config": {
+            "engine": "PostgreSQL",
+            "instanceClass": "db.r6g.large",
+            "deploymentOption": "Multi-AZ DB Instance (2x)",
+            "storageType": "gp3",
+            "storageGb": 200,
+            "backupRetentionGb": 400
+          },
+          "securityGroupIds": ["sg-data"]
+        }
+      },
+      {
+        "id": "cache-main",
+        "type": "serviceNode",
+        "parentId": "sub-data-b",
+        "extent": "parent",
+        "position": { "x": 50, "y": 90 },
+        "data": {
+          "label": "Multi-AZ Session Cache",
+          "serviceType": "elasticache",
+          "config": { "engine": "Valkey / Redis", "nodeType": "cache.r6g.large", "numNodes": 2 },
+          "securityGroupIds": ["sg-cache"]
+        }
+      },
+      {
+        "id": "lambda-worker",
+        "type": "serviceNode",
+        "parentId": "sub-app-b",
+        "extent": "parent",
+        "position": { "x": 40, "y": 230 },
+        "data": {
+          "label": "Async Job Worker",
+          "serviceType": "lambda",
+          "config": {
+            "architecture": "arm64",
+            "memoryMb": 1024,
+            "ephemeralStorageMb": 1024,
+            "requestsMillions": 25,
+            "avgDurationMs": 180
+          },
+          "securityGroupIds": ["sg-app"]
+        }
+      },
+      {
+        "id": "vpce-s3",
+        "type": "serviceNode",
+        "parentId": "vpc-prod",
+        "extent": "parent",
+        "position": { "x": 760, "y": 640 },
+        "data": {
+          "label": "S3 Gateway Endpoint",
+          "serviceType": "vpce",
+          "config": {
+            "endpointType": "Gateway (S3/DynamoDB)",
+            "targetService": "s3",
+            "azCount": 2,
+            "dataProcessedGb": 400
+          },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "vpce-secrets",
+        "type": "serviceNode",
+        "parentId": "sub-data-a",
+        "extent": "parent",
+        "position": { "x": 50, "y": 230 },
+        "data": {
+          "label": "Secrets Manager Interface Endpoint",
+          "serviceType": "vpce",
+          "config": {
+            "endpointType": "Interface (PrivateLink)",
+            "targetService": "secretsmanager",
+            "azCount": 2,
+            "dataProcessedGb": 60
+          },
+          "securityGroupIds": ["sg-vpce"]
+        }
+      },
+      {
+        "id": "sqs-jobs",
+        "type": "serviceNode",
+        "position": { "x": 1470, "y": 150 },
+        "data": {
+          "label": "Tenant Job Queue",
+          "serviceType": "sqs",
+          "config": { "queueType": "Standard", "requestsMillions": 25 },
+          "securityGroupIds": []
+        }
+      },
+      {
+        "id": "s3-assets",
+        "type": "serviceNode",
+        "position": { "x": 1470, "y": 400 },
+        "data": {
+          "label": "Tenant Assets & Exports",
+          "serviceType": "s3",
+          "config": {
+            "storageClass": "Standard",
+            "storageGb": 800,
+            "putRequestsThousands": 500,
+            "getRequestsThousands": 2500,
+            "internetEgressGb": 0
+          },
+          "securityGroupIds": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "ex-cloudfront-alb",
+        "source": "cloudfront-edge",
+        "target": "alb-main",
+        "type": "smoothstep",
+        "animated": true,
+        "data": { "protocol": "HTTPS", "port": "443", "label": "HTTPS :443" }
+      },
+      {
+        "id": "ex-cloudfront-s3",
+        "source": "cloudfront-edge",
+        "target": "s3-assets",
+        "type": "smoothstep",
+        "animated": true,
+        "data": { "protocol": "S3 API", "port": "443", "label": "S3 API :443" }
+      },
+      {
+        "id": "ex-alb-app-a",
+        "source": "alb-main",
+        "target": "ec2-app-a",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTP", "port": "8080", "label": "HTTP :8080" }
+      },
+      {
+        "id": "ex-alb-app-b",
+        "source": "alb-main",
+        "target": "ec2-app-b",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTP", "port": "8080", "label": "HTTP :8080" }
+      },
+      {
+        "id": "ex-app-a-db",
+        "source": "ec2-app-a",
+        "target": "rds-main",
+        "type": "smoothstep",
+        "data": { "protocol": "TCP", "port": "5432", "label": "TCP :5432" }
+      },
+      {
+        "id": "ex-app-b-db",
+        "source": "ec2-app-b",
+        "target": "rds-main",
+        "type": "smoothstep",
+        "data": { "protocol": "TCP", "port": "5432", "label": "TCP :5432" }
+      },
+      {
+        "id": "ex-app-a-cache",
+        "source": "ec2-app-a",
+        "target": "cache-main",
+        "type": "smoothstep",
+        "data": { "protocol": "TCP", "port": "6379", "label": "TCP :6379" }
+      },
+      {
+        "id": "ex-app-b-cache",
+        "source": "ec2-app-b",
+        "target": "cache-main",
+        "type": "smoothstep",
+        "data": { "protocol": "TCP", "port": "6379", "label": "TCP :6379" }
+      },
+      {
+        "id": "ex-app-secrets",
+        "source": "ec2-app-a",
+        "target": "vpce-secrets",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTPS", "port": "443", "label": "HTTPS :443" }
+      },
+      {
+        "id": "ex-app-s3-endpoint",
+        "source": "ec2-app-a",
+        "target": "vpce-s3",
+        "type": "smoothstep",
+        "data": { "protocol": "S3 API", "port": "443", "label": "S3 API :443" }
+      },
+      {
+        "id": "ex-worker-queue",
+        "source": "lambda-worker",
+        "target": "sqs-jobs",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTPS", "port": "443", "label": "SendMessage" }
+      },
+      {
+        "id": "ex-queue-worker",
+        "source": "sqs-jobs",
+        "target": "lambda-worker",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTPS", "port": "443", "label": "Invoke" }
+      },
+      {
+        "id": "ex-worker-db",
+        "source": "lambda-worker",
+        "target": "rds-main",
+        "type": "smoothstep",
+        "data": { "protocol": "TCP", "port": "5432", "label": "TCP :5432" }
+      },
+      {
+        "id": "ex-worker-s3",
+        "source": "lambda-worker",
+        "target": "s3-assets",
+        "type": "smoothstep",
+        "data": { "protocol": "HTTPS", "port": "443", "label": "PutObject" }
+      }
+    ],
+    "securityGroups": [
+      {
+        "id": "sg-alb",
+        "name": "sg-alb-public",
+        "description": "Public ALB ingress",
+        "rules": [
+          {
+            "id": "ex-r-alb-443",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "443",
+            "sourceOrDest": "0.0.0.0/0",
+            "description": "HTTPS from CloudFront and internet clients"
+          },
+          {
+            "id": "ex-r-alb-80",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "80",
+            "sourceOrDest": "0.0.0.0/0",
+            "description": "HTTP to HTTPS redirect"
+          }
+        ]
+      },
+      {
+        "id": "sg-app",
+        "name": "sg-app-tier",
+        "description": "Private tenant API and worker tier",
+        "rules": [
+          {
+            "id": "ex-r-app-8080",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "8080",
+            "sourceOrDest": "sg-alb",
+            "description": "Application traffic from the ALB"
+          },
+          {
+            "id": "ex-r-app-443",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "443",
+            "sourceOrDest": "sg-vpce",
+            "description": "Queue and endpoint callbacks"
+          }
+        ]
+      },
+      {
+        "id": "sg-data",
+        "name": "sg-data-tier",
+        "description": "Multi-AZ PostgreSQL database",
+        "rules": [
+          {
+            "id": "ex-r-db-5432",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "5432",
+            "sourceOrDest": "sg-app",
+            "description": "PostgreSQL from API and worker tiers"
+          }
+        ]
+      },
+      {
+        "id": "sg-cache",
+        "name": "sg-cache-tier",
+        "description": "ElastiCache session cache",
+        "rules": [
+          {
+            "id": "ex-r-cache-6379",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "6379",
+            "sourceOrDest": "sg-app",
+            "description": "Valkey/Redis from API tier"
+          }
+        ]
+      },
+      {
+        "id": "sg-vpce",
+        "name": "sg-interface-endpoints",
+        "description": "PrivateLink interface endpoints",
+        "rules": [
+          {
+            "id": "ex-r-vpce-443",
+            "direction": "inbound",
+            "protocol": "TCP",
+            "portRange": "443",
+            "sourceOrDest": "sg-app",
+            "description": "HTTPS from private application subnets"
+          }
+        ]
+      }
+    ]
+  }
+}

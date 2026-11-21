@@ -9,7 +9,7 @@ import SecurityGroupModal from './components/SecurityGroupModal';
 import Sidebar from './components/Sidebar';
 import TopToolbar from './components/TopToolbar';
 import { useArchStore } from './store/useArchStore';
-import { decodeProjectFromUrlHash } from './utils/projectSerializer';
+import { decodeProjectFromUrlHash, parseAndValidateProject } from './utils/projectSerializer';
 
 interface HashBanner {
   kind: 'success' | 'error';
@@ -63,6 +63,52 @@ export default function App() {
     loadFromHash();
     window.addEventListener('hashchange', loadFromHash);
     return () => window.removeEventListener('hashchange', loadFromHash);
+  }, [importProject]);
+
+  // Load a named example via ?example=<name> unless a share hash takes precedence.
+  useEffect(() => {
+    if (window.location.hash.startsWith('#arch=')) return;
+
+    const example = new URLSearchParams(window.location.search).get('example');
+    if (!example) return;
+
+    let cancelled = false;
+    void (async () => {
+      // Only simple names are accepted so the query cannot escape the examples folder.
+      if (!/^[a-zA-Z0-9_-]+$/.test(example)) {
+        setHashBanner({ kind: 'error', message: `Invalid example name "${example}".` });
+        return;
+      }
+
+      try {
+        const response = await fetch(`./examples/${example}.json`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = parseAndValidateProject(await response.text());
+        if (cancelled) return;
+
+        if (!result.valid || !result.project) {
+          setHashBanner({
+            kind: 'error',
+            message: result.error || `Failed to load example architecture "${example}".`,
+          });
+          return;
+        }
+
+        importProject(result.project);
+        setHashBanner({
+          kind: 'success',
+          message: `Loaded example architecture: ${result.project.metadata.projectName}`,
+        });
+      } catch {
+        if (!cancelled) {
+          setHashBanner({ kind: 'error', message: `Could not load example architecture "${example}".` });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [importProject]);
 
   // Auto-dismiss the brief success toast; error banners stay until dismissed.

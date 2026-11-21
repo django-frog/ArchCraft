@@ -1,13 +1,11 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { AlertOctagon, Braces, Upload, X } from 'lucide-react';
-import { useReactFlow } from '@xyflow/react';
-import { type AppEdge, type AppNode, useArchStore } from '../store/useArchStore';
+import { useArchStore } from '../store/useArchStore';
 import { parseAndValidateProject } from '../utils/projectSerializer';
 
 export default function ImportModal({ onClose }: { onClose: () => void }) {
   const importProject = useArchStore((s) => s.importProject);
-  const reactFlow = useReactFlow<AppNode, AppEdge>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [rawText, setRawText] = useState('');
@@ -44,15 +42,9 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
+    // importProject restores the saved viewport (or fits legacy files without one).
     importProject(result.project);
     onClose();
-
-    // Wait for the new nodes to mount before framing the canvas.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        void reactFlow.fitView({ duration: 400, padding: 0.2 });
-      });
-    });
   };
 
   return (

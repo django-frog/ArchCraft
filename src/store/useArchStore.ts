@@ -8,10 +8,12 @@ import {
   type OnEdgesChange,
   type OnConnect,
   type Connection,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import type {
   AwsNodeData,
   AwsEdgeData,
+  CanvasViewport,
   AwsPricesFile,
   AwsServiceType,
   SecurityGroup,
@@ -31,6 +33,10 @@ interface ArchState {
   nodes: AppNode[];
   edges: AppEdge[];
   securityGroups: SecurityGroup[];
+  /** Last known canvas camera, restored when importing a project or shared link. */
+  viewport?: CanvasViewport;
+  /** Live React Flow instance registered by the canvas; never persisted. */
+  reactFlowInstance: ReactFlowInstance<AppNode, AppEdge> | null;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   prices: AwsPricesFile | null;
@@ -41,6 +47,8 @@ interface ArchState {
   setRegion: (region: string) => void;
   setSelectedNode: (id: string | null) => void;
   setSelectedEdge: (id: string | null) => void;
+  setViewport: (viewport: CanvasViewport) => void;
+  setReactFlowInstance: (instance: ReactFlowInstance<AppNode, AppEdge> | null) => void;
 
   onNodesChange: OnNodesChange<AppNode>;
   onEdgesChange: OnEdgesChange<AppEdge>;
@@ -73,6 +81,8 @@ export const useArchStore = create<ArchState>()(
       nodes: THREE_TIER_TEMPLATE.nodes,
       edges: THREE_TIER_TEMPLATE.edges,
       securityGroups: DEFAULT_SGS,
+      viewport: undefined,
+      reactFlowInstance: null,
       selectedNodeId: null,
       selectedEdgeId: null,
       prices: null,
@@ -107,6 +117,8 @@ export const useArchStore = create<ArchState>()(
         }),
       setSelectedNode: (selectedNodeId) => set({ selectedNodeId, selectedEdgeId: null }),
       setSelectedEdge: (selectedEdgeId) => set({ selectedEdgeId, selectedNodeId: null }),
+      setViewport: (viewport) => set({ viewport }),
+      setReactFlowInstance: (reactFlowInstance) => set({ reactFlowInstance }),
 
       onNodesChange: (changes) => set({ nodes: changes.applyTo(get().nodes) }),
       onEdgesChange: (changes) => set({ edges: changes.applyTo(get().edges) }),
@@ -286,16 +298,31 @@ export const useArchStore = create<ArchState>()(
         }
       },
 
-      importProject: (project) =>
+      importProject: (project) => {
+        const viewport = project.architecture.viewport;
         set({
           projectName: project.metadata.projectName,
           region: project.metadata.region,
           nodes: project.architecture.nodes,
           edges: project.architecture.edges,
           securityGroups: project.architecture.securityGroups,
+          viewport,
           selectedNodeId: null,
           selectedEdgeId: null,
-        }),
+        });
+
+        // Restore the camera after the imported nodes mount. Only fall back to
+        // fitView when the source project did not carry an exact viewport.
+        const reactFlowInstance = get().reactFlowInstance;
+        if (!reactFlowInstance) return;
+        requestAnimationFrame(() => {
+          if (viewport) {
+            void reactFlowInstance.setViewport(viewport);
+          } else {
+            void reactFlowInstance.fitView({ duration: 400, padding: 0.18 });
+          }
+        });
+      },
 
       getTotalMonthlyCost: () => {
         const { nodes, region, prices } = get();
@@ -316,6 +343,7 @@ export const useArchStore = create<ArchState>()(
         nodes: state.nodes,
         edges: state.edges,
         securityGroups: state.securityGroups,
+        viewport: state.viewport,
         selectedNodeId: state.selectedNodeId,
         selectedEdgeId: state.selectedEdgeId,
       }),

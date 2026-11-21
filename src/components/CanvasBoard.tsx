@@ -11,6 +11,8 @@ import {
   useUpdateNodeInternals,
   type NodeTypes,
   type OnNodeDrag,
+  type OnMoveEnd,
+  type OnInit,
   type OnSelectionChangeFunc,
 } from '@xyflow/react';
 import { AWS_CATALOG } from '../data/awsCatalog';
@@ -133,7 +135,13 @@ function findContainer(
   })[0];
 }
 
-function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
+function CanvasBoardInner({
+  focusMode,
+  skipInitialFitView,
+}: {
+  focusMode: boolean;
+  skipInitialFitView: boolean;
+}) {
   const nodes = useArchStore((s) => s.nodes);
   const edges = useArchStore((s) => s.edges);
   const onNodesChange = useArchStore((s) => s.onNodesChange);
@@ -142,6 +150,8 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
   const addServiceNode = useArchStore((s) => s.addServiceNode);
   const setNodeParent = useArchStore((s) => s.setNodeParent);
   const deleteSelected = useArchStore((s) => s.deleteSelected);
+  const setViewport = useArchStore((s) => s.setViewport);
+  const setReactFlowInstance = useArchStore((s) => s.setReactFlowInstance);
 
   const { screenToFlowPosition, fitView } = useReactFlow<AppNode, AppEdge>();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -224,6 +234,28 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
     }
   }, []);
 
+  const handleInit: OnInit<AppNode, AppEdge> = useCallback(
+    (instance) => {
+      setReactFlowInstance(instance);
+      // A shared link is imported from App's effect before React Flow reports
+      // onInit, so apply that saved camera as soon as the instance is ready.
+      const savedViewport = useArchStore.getState().viewport;
+      if (skipInitialFitView && savedViewport) {
+        void instance.setViewport(savedViewport);
+      } else {
+        setViewport(instance.getViewport());
+      }
+    },
+    [setReactFlowInstance, setViewport, skipInitialFitView]
+  );
+
+  const handleMoveEnd: OnMoveEnd = useCallback(
+    (_event, viewport) => {
+      setViewport({ x: viewport.x, y: viewport.y, zoom: viewport.zoom });
+    },
+    [setViewport]
+  );
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
@@ -264,13 +296,15 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onSelectionChange={handleSelectionChange}
+      onInit={handleInit}
+      onMoveEnd={handleMoveEnd}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onNodeDragStop={handleNodeDragStop}
       forceColorMode="dark"
       connectionMode={ConnectionMode.Loose}
       deleteKeyCode={null}
-      fitView
+      fitView={!skipInitialFitView}
       fitViewOptions={{ padding: 0.18 }}
       minZoom={0.2}
       maxZoom={1.8}
@@ -292,6 +326,12 @@ function CanvasBoardInner({ focusMode }: { focusMode: boolean }) {
   );
 }
 
-export default function CanvasBoard({ focusMode = false }: { focusMode?: boolean }) {
-  return <CanvasBoardInner focusMode={focusMode} />;
+export default function CanvasBoard({
+  focusMode = false,
+  skipInitialFitView = false,
+}: {
+  focusMode?: boolean;
+  skipInitialFitView?: boolean;
+}) {
+  return <CanvasBoardInner focusMode={focusMode} skipInitialFitView={skipInitialFitView} />;
 }

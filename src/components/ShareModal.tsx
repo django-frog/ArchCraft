@@ -10,10 +10,11 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
   const nodes = useArchStore((s) => s.nodes);
   const edges = useArchStore((s) => s.edges);
   const securityGroups = useArchStore((s) => s.securityGroups);
+  const viewport = useArchStore((s) => s.viewport);
 
   const share = useMemo(
-    () => encodeProjectToUrlHash({ projectName, region, nodes, edges, securityGroups }),
-    [projectName, region, nodes, edges, securityGroups]
+    () => encodeProjectToUrlHash({ projectName, region, nodes, edges, securityGroups, viewport }),
+    [projectName, region, nodes, edges, securityGroups, viewport]
   );
 
   const handleCopy = async () => {

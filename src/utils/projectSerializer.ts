@@ -1,5 +1,5 @@
 import type { AppNode, AppEdge } from '../store/useArchStore';
-import type { SecurityGroup } from '../types/architecture';
+import type { CanvasViewport, SecurityGroup } from '../types/architecture';
 import { AWS_CATALOG, AWS_REGIONS } from '../data/awsCatalog';
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 
@@ -18,6 +18,8 @@ export interface ArchCraftProjectFile {
     nodes: AppNode[];
     edges: AppEdge[];
     securityGroups: SecurityGroup[];
+    /** Exact canvas framing captured when the project was exported/shared. */
+    viewport?: CanvasViewport;
   };
 }
 
@@ -37,21 +39,36 @@ export function serializeProject(params: {
   nodes: AppNode[];
   edges: AppEdge[];
   securityGroups: SecurityGroup[];
+  viewport?: CanvasViewport;
 }): ArchCraftProjectFile {
-  const cleanNodes: AppNode[] = params.nodes.map((n) => ({
-    id: n.id,
-    type: n.type || (AWS_CATALOG[n.data.serviceType]?.isContainer ? 'containerNode' : 'serviceNode'),
-    position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
-    ...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {}),
-    ...(n.style ? { style: { width: n.style.width, height: n.style.height } } : {}),
-    data: {
-      label: n.data.label,
-      serviceType: n.data.serviceType,
-      config: { ...n.data.config },
-      securityGroupIds: [...(n.data.securityGroupIds || [])],
-      ...(n.data.notes ? { notes: n.data.notes } : {}),
-    },
-  }));
+  const cleanNodes: AppNode[] = params.nodes.map((n) => {
+    const isContainer = AWS_CATALOG[n.data.serviceType]?.isContainer;
+    // React Flow writes resized container dimensions to `width`/`height` or `measured`;
+    // older exports carried them only in `style`. Capture all sources so the box round-trips.
+    const defaultW = n.data.serviceType === 'vpc' ? 900 : 360;
+    const defaultH = n.data.serviceType === 'vpc' ? 620 : 420;
+    const width = Math.round(Number(n.width ?? n.measured?.width ?? n.style?.width ?? defaultW));
+    const height = Math.round(Number(n.height ?? n.measured?.height ?? n.style?.height ?? defaultH));
+
+    return {
+      id: n.id,
+      type: n.type || (isContainer ? 'containerNode' : 'serviceNode'),
+      position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
+      ...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {}),
+      ...(isContainer
+        ? { width, height, style: { width, height } }
+        : n.style
+          ? { style: { width: n.style.width, height: n.style.height } }
+          : {}),
+      data: {
+        label: n.data.label,
+        serviceType: n.data.serviceType,
+        config: { ...n.data.config },
+        securityGroupIds: [...(n.data.securityGroupIds || [])],
+        ...(n.data.notes ? { notes: n.data.notes } : {}),
+      },
+    };
+  });
 
   const cleanEdges: AppEdge[] = params.edges.map((e) => ({
     id: e.id,
@@ -80,6 +97,9 @@ export function serializeProject(params: {
       nodes: cleanNodes,
       edges: cleanEdges,
       securityGroups: structuredClone(params.securityGroups),
+      ...(params.viewport
+        ? { viewport: { x: params.viewport.x, y: params.viewport.y, zoom: params.viewport.zoom } }
+        : {}),
     },
   };
 }
@@ -167,6 +187,16 @@ export function parseAndValidateProject(rawJson: string): ImportValidationResult
   const region =
     parsed.metadata?.region && parsed.metadata.region in AWS_REGIONS ? parsed.metadata.region : 'us-east-1';
 
+  const rawViewport = parsed.architecture.viewport;
+  const viewport: CanvasViewport | undefined =
+    rawViewport &&
+    Number.isFinite(Number(rawViewport.x)) &&
+    Number.isFinite(Number(rawViewport.y)) &&
+    Number.isFinite(Number(rawViewport.zoom)) &&
+    Number(rawViewport.zoom) > 0
+      ? { x: Number(rawViewport.x), y: Number(rawViewport.y), zoom: Number(rawViewport.zoom) }
+      : undefined;
+
   return {
     valid: true,
     project: {
@@ -181,6 +211,7 @@ export function parseAndValidateProject(rawJson: string): ImportValidationResult
         nodes: orderedNodes,
         edges: sanitizedEdges,
         securityGroups: Array.isArray(securityGroups) ? securityGroups : [],
+        ...(viewport ? { viewport } : {}),
       },
     },
   };
@@ -196,6 +227,7 @@ export function encodeProjectToUrlHash(params: {
   nodes: AppNode[];
   edges: AppEdge[];
   securityGroups: SecurityGroup[];
+  viewport?: CanvasViewport;
 }): { url: string; charLength: number; isLarge: boolean } {
   const payload = serializeProject(params);
   // Compact JSON (no whitespace) before LZ compression for maximum ratio

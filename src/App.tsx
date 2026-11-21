@@ -23,6 +23,11 @@ export default function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [advisorOpen, setAdvisorOpen] = useState(false);
   const [hashBanner, setHashBanner] = useState<HashBanner | null>(null);
+  // A shared link with a saved camera must not be overridden by the canvas's initial fitView.
+  const [skipInitialFitView] = useState(() => {
+    const result = decodeProjectFromUrlHash(window.location.hash);
+    return Boolean(result?.valid && result.project?.architecture.viewport);
+  });
   const [focusMode, setFocusMode] = useState(false);
   const [exitPillVisible, setExitPillVisible] = useState(true);
 
@@ -117,7 +122,7 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           {!focusMode && <Sidebar />}
           <main className="relative min-w-0 flex-1">
-            <CanvasBoard focusMode={focusMode} />
+            <CanvasBoard focusMode={focusMode} skipInitialFitView={skipInitialFitView} />
           </main>
           {!focusMode && <InspectorPanel />}
         </div>

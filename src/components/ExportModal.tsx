@@ -20,16 +20,17 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
   const nodes = useArchStore((s) => s.nodes);
   const edges = useArchStore((s) => s.edges);
   const securityGroups = useArchStore((s) => s.securityGroups);
+  const viewport = useArchStore((s) => s.viewport);
   const prices = useArchStore((s) => s.prices);
 
   const projectJson = useMemo(
     () =>
       JSON.stringify(
-        serializeProject({ projectName, region, nodes, edges, securityGroups }),
+        serializeProject({ projectName, region, nodes, edges, securityGroups, viewport }),
         null,
         2
       ),
-    [projectName, region, nodes, edges, securityGroups]
+    [projectName, region, nodes, edges, securityGroups, viewport]
   );
   const markdown = useMemo(
     () => generateMarkdownSpec({ projectName, region, nodes, edges, securityGroups, prices }),

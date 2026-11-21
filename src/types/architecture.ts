@@ -76,6 +76,13 @@ export interface AwsEdgeData extends Record<string, unknown> {
   label?: string;
 }
 
+/** Exact React Flow camera framing, persisted so exports and shared links restore the same view. */
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
 /** One line of a transparent, region-aware AWS billing breakdown. */
 export interface CostLineItem {
   label: string;

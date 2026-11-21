@@ -11,9 +11,10 @@ interface EdgeInspectorProps {
   edge: AppEdge;
   nodes: AppNode[];
   onUpdate: (edgeId: string, dataPatch: Partial<AwsEdgeData>) => void;
+  onUpdateMeta: (edgeId: string, metaPatch: Partial<Pick<AppEdge, 'animated' | 'type'>>) => void;
 }
 
-export default function EdgeInspector({ edge, nodes, onUpdate }: EdgeInspectorProps) {
+export default function EdgeInspector({ edge, nodes, onUpdate, onUpdateMeta }: EdgeInspectorProps) {
   const protocol = edge.data?.protocol || 'TCP';
   const port = edge.data?.port || '';
   const autoLabel = `${protocol} :${port}`;
@@ -77,6 +78,18 @@ export default function EdgeInspector({ edge, nodes, onUpdate }: EdgeInspectorPr
           value={edge.data?.label || ''}
           placeholder="e.g. HTTPS :443"
           onChange={(event) => onUpdate(edge.id, { label: event.target.value })}
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          Animated (Dashed Flow)
+        </span>
+        <input
+          type="checkbox"
+          checked={!!edge.animated}
+          onChange={(event) => onUpdateMeta(edge.id, { animated: event.target.checked })}
+          className="h-4 w-4 accent-sky-500"
         />
       </label>
 

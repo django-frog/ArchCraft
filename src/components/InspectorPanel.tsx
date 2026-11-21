@@ -20,6 +20,7 @@ export default function InspectorPanel() {
   const updateNodeLabel = useArchStore((s) => s.updateNodeLabel);
   const toggleNodeSecurityGroup = useArchStore((s) => s.toggleNodeSecurityGroup);
   const updateEdgeData = useArchStore((s) => s.updateEdgeData);
+  const updateEdgeMeta = useArchStore((s) => s.updateEdgeMeta);
   const setSelectedNode = useArchStore((s) => s.setSelectedNode);
   const setSelectedEdge = useArchStore((s) => s.setSelectedEdge);
   const { findings } = useArchitectureLint();
@@ -141,7 +142,14 @@ export default function InspectorPanel() {
         </div>
       )}
 
-      {edge && <EdgeInspector edge={edge} nodes={nodes} onUpdate={updateEdgeData} />}
+      {edge && (
+        <EdgeInspector
+          edge={edge}
+          nodes={nodes}
+          onUpdate={updateEdgeData}
+          onUpdateMeta={updateEdgeMeta}
+        />
+      )}
     </aside>
   );
 }

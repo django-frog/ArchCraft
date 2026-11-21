@@ -107,6 +107,7 @@ interface ArchState {
   deleteSelected: () => void;
 
   updateEdgeData: (edgeId: string, dataPatch: Partial<AwsEdgeData>) => void;
+  updateEdgeMeta: (edgeId: string, metaPatch: Partial<Pick<AppEdge, 'animated' | 'type'>>) => void;
 
   addSecurityGroup: (sg: Omit<SecurityGroup, 'id'>) => void;
   addSecurityRule: (sgId: string, rule: Omit<SecurityRule, 'id'>) => void;
@@ -290,6 +291,11 @@ export const useArchStore = create<ArchState>()(
           edges: get().edges.map((e) =>
             e.id === edgeId ? { ...e, data: { ...(e.data || { protocol: 'TCP', port: '443' }), ...dataPatch } } : e
           ),
+        }),
+
+      updateEdgeMeta: (edgeId, metaPatch) =>
+        set({
+          edges: get().edges.map((e) => (e.id === edgeId ? { ...e, ...metaPatch } : e)),
         }),
 
       addSecurityGroup: (sg) =>

@@ -27,6 +27,51 @@ import type { ArchCraftProjectFile } from '../utils/projectSerializer';
 export type AppNode = Node<AwsNodeData>;
 export type AppEdge = Edge<AwsEdgeData>;
 
+/** Realistic protocol/port defaults inferred from the service being connected to. */
+export function getDefaultEdgeData(targetNode?: AppNode): AwsEdgeData {
+  const config = targetNode?.data.config ?? {};
+
+  let protocol = 'TCP';
+  let port = '443';
+
+  switch (targetNode?.data.serviceType) {
+    case 'rds': {
+      const engine = String(config.engine ?? '').trim().toLowerCase();
+      if (/sql\s*server|mssql/.test(engine)) {
+        port = '1433';
+      } else if (engine.includes('mysql') || engine.includes('mariadb')) {
+        port = '3306';
+      } else {
+        port = '5432';
+      }
+      break;
+    }
+    case 'elasticache':
+      port = String(config.engine ?? '').toLowerCase().includes('memcached') ? '11211' : '6379';
+      break;
+    case 'ec2':
+      protocol = 'HTTP';
+      port = '8080';
+      break;
+    case 'alb':
+    case 'cloudfront':
+    case 'igw':
+    case 's3':
+    case 'sqs':
+    case 'dynamodb':
+    case 'lambda':
+      protocol = 'HTTPS';
+      port = '443';
+      break;
+    default:
+      // Containers and other services have no well-known application port.
+      protocol = 'TCP';
+      port = '443';
+  }
+
+  return { protocol, port, label: `${protocol} :${port}` };
+}
+
 interface ArchState {
   projectName: string;
   region: string;
@@ -122,17 +167,19 @@ export const useArchStore = create<ArchState>()(
 
       onNodesChange: (changes) => set({ nodes: changes.applyTo(get().nodes) }),
       onEdgesChange: (changes) => set({ edges: changes.applyTo(get().edges) }),
-      onConnect: (connection: Connection) =>
+      onConnect: (connection: Connection) => {
+        const targetNode = get().nodes.find((node) => node.id === connection.target);
         set({
           edges: addEdge(
             {
               ...connection,
               type: 'smoothstep',
-              data: { protocol: 'TCP', port: '443', label: 'TCP :443' },
+              data: getDefaultEdgeData(targetNode),
             },
             get().edges
           ),
-        }),
+        });
+      },
 
       addServiceNode: (serviceType, position = { x: 160, y: 160 }, parentId) => {
         const def = AWS_CATALOG[serviceType];

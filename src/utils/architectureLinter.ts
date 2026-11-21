@@ -1,6 +1,37 @@
 import type { AppNode, AppEdge } from '../store/useArchStore';
-import type { RouteTableEntry, SecurityGroup } from '../types/architecture';
+import type { RouteTableEntry, SecurityGroup, SecurityRule } from '../types/architecture';
 import { findOverlappingSubnets, isSubnetContainedInVpc, parseCidr } from './cidrValidator';
+
+const NUMERIC_PORT = /^\d+$/;
+
+/** Whether an inbound Security Group rule covers the port used by a connection. */
+function inboundRuleAllowsPort(rule: SecurityRule, port: string, protocol: string): boolean {
+  if (rule.direction !== 'inbound') return false;
+
+  const ruleProtocol = rule.protocol.toUpperCase();
+  if (ruleProtocol === 'ICMP') return false;
+  if (ruleProtocol !== 'ALL') {
+    const isUdpRule = ruleProtocol === 'UDP';
+    const isUdpConnection = protocol.toUpperCase() === 'UDP';
+    if (isUdpRule !== isUdpConnection) return false;
+  }
+
+  const range = rule.portRange.trim().toUpperCase();
+  if (range === 'ALL' || range === '*' || range === '0-65535') return true;
+  if (!NUMERIC_PORT.test(port)) return false;
+  const portNumber = Number(port);
+
+  return range.split(',').some((entry) => {
+    const part = entry.trim();
+    if (part === 'ALL' || part === '*' || part === '0-65535') return true;
+    const [startRaw, endRaw] = part.split('-');
+    const start = (startRaw ?? '').trim();
+    if (!NUMERIC_PORT.test(start)) return false;
+    const end = endRaw === undefined ? start : endRaw.trim();
+    if (!NUMERIC_PORT.test(end)) return false;
+    return portNumber >= Number(start) && portNumber <= Number(end);
+  });
+}
 
 export type LintSeverity = 'critical' | 'warning' | 'info';
 export type WellArchitectedPillar = 'Security' | 'Reliability' | 'Cost Optimization' | 'Performance';
@@ -24,6 +55,7 @@ export function runArchitectureLinter(
 ): LintFinding[] {
   const findings: LintFinding[] = [];
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const securityGroupMap = new Map(securityGroups.map((sg) => [sg.id, sg]));
 
   // Helper: Resolve ancestor Subnet and VPC for any node
   const getAncestors = (node: AppNode) => {
@@ -363,6 +395,52 @@ export function runArchitectureLinter(
         });
       }
     }
+  }
+
+  // --- SEC-06: Connection ports blocked by the target's Security Groups ---
+  for (const edge of edges) {
+    const target = nodeMap.get(edge.target);
+    if (!target) continue;
+
+    const attachedIds = target.data.securityGroupIds || [];
+    if (attachedIds.length === 0) continue;
+
+    const attachedGroups = attachedIds
+      .map((id) => securityGroupMap.get(id))
+      .filter((sg): sg is SecurityGroup => !!sg);
+    if (attachedGroups.length === 0) continue;
+
+    const port = String(edge.data?.port ?? '').trim();
+    if (!port) continue;
+    const protocol = String(edge.data?.protocol ?? 'TCP');
+
+    const isAllowed = attachedGroups.some((sg) =>
+      sg.rules.some((rule) => inboundRuleAllowsPort(rule, port, protocol))
+    );
+    if (isAllowed) continue;
+
+    const groupNames = attachedGroups.map((sg) => sg.name).join(', ');
+    const source = nodeMap.get(edge.source);
+    const allowedPorts = Array.from(
+      new Set(
+        attachedGroups.flatMap((sg) =>
+          sg.rules.filter((rule) => rule.direction === 'inbound').map((rule) => rule.portRange.trim())
+        )
+      )
+    ).filter(Boolean);
+    const allowedHint = allowedPorts.length ? ` Ports already allowed: ${allowedPorts.join(', ')}.` : '';
+
+    findings.push({
+      id: `${edge.id}-sg-port-blocked`,
+      ruleId: 'SEC-06',
+      severity: 'warning',
+      pillar: 'Security',
+      title: `Connection port :${port} is blocked by target Security Groups`,
+      description: `Connection port :${port} is blocked by target Security Groups. Connection from "${source?.data.label || edge.source}" to "${target.data.label}" uses ${protocol} :${port}, but none of the Security Groups attached to the target (${groupNames}) permit inbound traffic on that port.`,
+      remediation: `Add an inbound rule allowing ${protocol.toUpperCase() === 'UDP' ? 'UDP' : 'TCP'} port ${port} on ${groupNames} (or change the connection's port to an already-allowed value).${allowedHint}`,
+      targetId: target.id,
+      targetName: target.data.label,
+    });
   }
 
   // Sort: critical -> warning -> info

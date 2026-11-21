@@ -14,6 +14,24 @@ interface EdgeInspectorProps {
 }
 
 export default function EdgeInspector({ edge, nodes, onUpdate }: EdgeInspectorProps) {
+  const protocol = edge.data?.protocol || 'TCP';
+  const port = edge.data?.port || '';
+  const autoLabel = `${protocol} :${port}`;
+  // A custom label is a non-empty value that no longer matches the generated one.
+  const hasCustomLabel = !!edge.data?.label && edge.data.label !== autoLabel;
+
+  const updateProtocol = (nextProtocol: string) =>
+    onUpdate(edge.id, {
+      protocol: nextProtocol,
+      ...(hasCustomLabel ? {} : { label: `${nextProtocol} :${port}` }),
+    });
+
+  const updatePort = (nextPort: string) =>
+    onUpdate(edge.id, {
+      port: nextPort,
+      ...(hasCustomLabel ? {} : { label: `${protocol} :${nextPort}` }),
+    });
+
   return (
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
       <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-400">
@@ -29,8 +47,8 @@ export default function EdgeInspector({ edge, nodes, onUpdate }: EdgeInspectorPr
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Protocol</span>
         <select
           className={fieldClass}
-          value={edge.data?.protocol || 'TCP'}
-          onChange={(event) => onUpdate(edge.id, { protocol: event.target.value })}
+          value={protocol}
+          onChange={(event) => updateProtocol(event.target.value)}
         >
           {EDGE_PROTOCOLS.map((protocol) => (
             <option key={protocol} value={protocol}>
@@ -44,9 +62,9 @@ export default function EdgeInspector({ edge, nodes, onUpdate }: EdgeInspectorPr
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Port</span>
         <input
           className={fieldClass}
-          value={edge.data?.port || ''}
+          value={port}
           placeholder="443"
-          onChange={(event) => onUpdate(edge.id, { port: event.target.value })}
+          onChange={(event) => updatePort(event.target.value)}
         />
       </label>
 

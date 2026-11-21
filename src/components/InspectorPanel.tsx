@@ -33,6 +33,13 @@ export default function InspectorPanel() {
     [node, rates]
   );
 
+  // Gateway endpoints do not have ENIs, so only Interface (PrivateLink)
+  // endpoints can have Security Groups attached.
+  const showSecurityGroups =
+    !!node &&
+    !!AWS_CATALOG[node.data.serviceType].supportsSecurityGroups &&
+    (node.data.serviceType !== 'vpce' || /^interface/i.test(String(node.data.config.endpointType || '')));
+
   return (
     <aside className="flex w-[22rem] shrink-0 flex-col border-l border-slate-800 bg-slate-950/90">
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
@@ -73,7 +80,7 @@ export default function InspectorPanel() {
             onUpdateLabel={updateNodeLabel}
           />
 
-          {AWS_CATALOG[node.data.serviceType].supportsSecurityGroups && (
+          {showSecurityGroups && (
             <div>
               <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 <ShieldCheck size={12} /> Security Groups

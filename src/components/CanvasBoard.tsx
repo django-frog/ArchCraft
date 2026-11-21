@@ -9,6 +9,7 @@ import {
   ReactFlow,
   useReactFlow,
   useUpdateNodeInternals,
+  type IsValidConnection,
   type NodeTypes,
   type OnNodeDrag,
   type OnMoveEnd,
@@ -184,6 +185,20 @@ function CanvasBoardInner({
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  // Connections represent traffic between services, never between the
+  // VPC/Subnet background boxes that merely group them on the canvas.
+  const isValidConnection: IsValidConnection<AppEdge> = useCallback((connection) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+    const currentNodes = useArchStore.getState().nodes;
+    const sourceNode = currentNodes.find((node) => node.id === connection.source);
+    const targetNode = currentNodes.find((node) => node.id === connection.target);
+    if (!sourceNode || !targetNode) return false;
+    return (
+      !AWS_CATALOG[sourceNode.data.serviceType]?.isContainer &&
+      !AWS_CATALOG[targetNode.data.serviceType]?.isContainer
+    );
+  }, []);
+
   const handleNodeDragStop: OnNodeDrag<AppNode> = useCallback(
     (_event, node) => {
       const serviceType = node.data.serviceType;
@@ -295,6 +310,7 @@ function CanvasBoardInner({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      isValidConnection={isValidConnection}
       onSelectionChange={handleSelectionChange}
       onInit={handleInit}
       onMoveEnd={handleMoveEnd}

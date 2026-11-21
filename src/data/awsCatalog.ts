@@ -117,6 +117,7 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
     shortName: 'ALB',
     category: 'Networking',
     color: '#fb7185',
+    supportsSecurityGroups: true,
     defaultConfig: {
       scheme: 'internet-facing',
       lcuEstimate: 2,
@@ -152,6 +153,7 @@ export const AWS_CATALOG: Record<AwsServiceType, ServiceDefinition> = {
     shortName: 'VPCE',
     category: 'Networking',
     color: '#14b8a6',
+    supportsSecurityGroups: true,
     defaultConfig: {
       endpointType: 'Gateway (S3/DynamoDB)',
       targetService: 's3',
